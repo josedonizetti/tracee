@@ -1,6 +1,10 @@
 // +build ignore
 // ^^ this is a golang build tag meant to exclude this C file from compilation by the CGO compiler
 
+#ifndef BPF_NO_PRESERVE_ACCESS_INDEX
+#pragma clang attribute push (__attribute__((preserve_access_index)), apply_to = record)
+#endif
+
 /* In Linux 5.4 asm_inline was introduced, but it's not supported by clang.
  * Redefine it to just asm to enable successful compilation.
  * see https://github.com/iovisor/bcc/commit/2d1497cde1cc9835f759a707b42dea83bee378b8 for more details
@@ -48,6 +52,7 @@
 #include <bpf_helpers.h>
 #include <bpf_tracing.h>
 #include <bpf_endian.h>
+#include <bpf_core_read.h>
 
 #if defined(bpf_target_x86)
 #define PT_REGS_PARM6(ctx)  ((ctx)->r9)
@@ -189,11 +194,20 @@
 
 #define DEV_NULL_STR    0
 
+#ifndef CORE
 #define READ_KERN(ptr) ({ typeof(ptr) _val;                             \
                           __builtin_memset(&_val, 0, sizeof(_val));     \
                           bpf_probe_read(&_val, sizeof(_val), &ptr);    \
                           _val;                                         \
                         })
+#else
+#define READ_KERN(ptr) ({ typeof(ptr) _val;                                                           \
+                          __builtin_memset(&_val, 0, sizeof(_val));                                   \
+                          bpf_core_read(&_val, sizeof(_val), &ptr); \
+                          _val;                                                                       \
+                        })
+#endif
+
 
 #define BPF_MAP(_name, _type, _key_type, _value_type, _max_entries) \
 struct bpf_map_def SEC("maps") _name = { \
@@ -2991,3 +3005,7 @@ int BPF_KPROBE(trace_mprotect_alert)
 
 char LICENSE[] SEC("license") = "GPL";
 int KERNEL_VERSION SEC("version") = LINUX_VERSION_CODE;
+
+#ifndef BPF_NO_PRESERVE_ACCESS_INDEX
+#pragma clang attribute pop
+#endif
