@@ -72,6 +72,9 @@ bpf: $(OUT_BPF)
 
 linux_arch := $(ARCH:x86_64=x86)
 ifndef DOCKER
+ifndef CORE
+#docker no
+# CO:RE no
 $(OUT_DIR)/tracee.bpf.%.o: $(BPF_SRC) $(LIBBPF_HEADERS) | $(OUT_DIR) $(bpf_compile_tools)
 	@v=$$($(CMD_CLANG) --version); test $$(echo $${v#*version} | head -n1 | cut -d '.' -f1) -ge '9' || (echo 'required minimum clang version: 9' ; false)
 	$(CMD_CLANG) -S \
@@ -111,6 +114,51 @@ $(OUT_DIR)/tracee.bpf.%.o: $(BPF_SRC) $(LIBBPF_HEADERS) | $(OUT_DIR) $(bpf_compi
 	-$(CMD_LLVM_STRIP) -g $@
 	rm $(@:.o=.ll)
 else
+# docker no, 
+#  CORE yes
+$(OUT_DIR)/tracee.bpf.%.o: $(BPF_SRC) $(LIBBPF_HEADERS) | $(OUT_DIR) $(bpf_compile_tools)
+	@v=$$($(CMD_CLANG) --version); test $$(echo $${v#*version} | head -n1 | cut -d '.' -f1) -ge '9' || (echo 'required minimum clang version: 9' ; false)
+	$(CMD_CLANG) -S \
+		-D__BPF_TRACING__ \
+		-D__KERNEL__ \
+		-D__TARGET_ARCH_$(linux_arch) \
+		-DCORE \
+		-I $(LIBBPF_HEADERS)/bpf \
+		-include $(KERN_SRC_PATH)/include/linux/kconfig.h \
+		-I $(KERN_SRC_PATH)/arch/$(linux_arch)/include \
+		-I $(KERN_SRC_PATH)/arch/$(linux_arch)/include/uapi \
+		-I $(KERN_BLD_PATH)/arch/$(linux_arch)/include/generated \
+		-I $(KERN_BLD_PATH)/arch/$(linux_arch)/include/generated/uapi \
+		-I $(KERN_SRC_PATH)/include \
+		-I $(KERN_BLD_PATH)/include \
+		-I $(KERN_SRC_PATH)/include/uapi \
+		-I $(KERN_BLD_PATH)/include/generated \
+		-I $(KERN_BLD_PATH)/include/generated/uapi \
+		-I $(BPF_HEADERS) \
+		-Wno-address-of-packed-member \
+		-Wno-compare-distinct-pointer-types \
+		-Wno-deprecated-declarations \
+		-Wno-gnu-variable-sized-type-not-at-end \
+		-Wno-pointer-sign \
+		-Wno-pragma-once-outside-header \
+		-Wno-unknown-warning-option \
+		-Wno-unused-value \
+		-Wunused \
+		-Wall \
+		-fno-stack-protector \
+		-fno-jump-tables \
+		-fno-unwind-tables \
+		-fno-asynchronous-unwind-tables \
+		-xc \
+		-nostdinc \
+		-O2 -emit-llvm -c -g $< -o $(@:.o=.ll)
+	$(CMD_LLC) -march=bpf -filetype=obj -o $@ $(@:.o=.ll)
+	-$(CMD_LLVM_STRIP) -g $@
+	rm $(@:.o=.ll)
+endif
+# docker yes
+else
+
 $(OUT_BPF): $(DOCKER_BUILDER) | $(OUT_DIR) 
 	$(call docker_builder_make,$@)
 endif
