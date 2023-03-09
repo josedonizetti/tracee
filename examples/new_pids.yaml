@@ -1,0 +1,8 @@
+name: new_pids
+description: This policy traces openat and security_file_open for new pids
+scope: 
+  - pid=new
+defaultAction: audit
+rules:
+  - event: openat
+  - event: security_file_open
