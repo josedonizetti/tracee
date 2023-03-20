@@ -37,7 +37,8 @@ type Event struct {
 	PodSandbox          bool         `json:"podSandbox"`
 	EventID             int          `json:"eventId,string"`
 	EventName           string       `json:"eventName"`
-	MatchedPolicies     uint64       `json:"matchedPolicies"`
+	MatchedPolicies     uint64       `json:"-"`                    // omit MatchedPolicies from json output
+	MatchedPolicesNames []string     `json:"matchedPoliciesNames"` // to be omited when issue #2868 is resolved
 	ArgsNum             int          `json:"argsNum"`
 	ReturnValue         int          `json:"returnValue"`
 	Syscall             string       `json:"syscall"`
