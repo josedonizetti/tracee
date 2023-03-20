@@ -6,6 +6,7 @@ import (
 
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
+	"github.com/aquasecurity/tracee/pkg/policy"
 )
 
 type PolicyFile struct {
@@ -30,8 +31,8 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 		return nil, errfmt.Errorf("no policies provided")
 	}
 
-	if len(policies) > 64 {
-		return nil, errfmt.Errorf("too many policies provided, there is a limit of 64 policies")
+	if len(policies) > policy.MaxPolicies {
+		return nil, errfmt.Errorf("too many policies provided, there is a limit of %d policies", policy.MaxPolicies)
 	}
 
 	for i, p := range policies {
@@ -81,6 +82,7 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 				filterName:        filterName,
 				operatorAndValues: operatorAndValues,
 				policyIdx:         i,
+				policyName:        p.Name,
 			})
 		}
 
@@ -95,6 +97,7 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 				filterName:        "event",
 				operatorAndValues: fmt.Sprintf("=%s", r.Event),
 				policyIdx:         i,
+				policyName:        p.Name,
 			})
 
 			for _, f := range r.Filter {
@@ -111,6 +114,7 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 						filterName:        fmt.Sprintf("%s.%s", r.Event, f[:operatorIdx]),
 						operatorAndValues: f[operatorIdx:],
 						policyIdx:         i,
+						policyName:        p.Name,
 					})
 
 					continue
@@ -123,6 +127,7 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 						filterName:        fmt.Sprintf("%s.retval.%s", r.Event, f[:operatorIdx]),
 						operatorAndValues: f[operatorIdx:],
 						policyIdx:         i,
+						policyName:        p.Name,
 					})
 					continue
 				}
@@ -138,6 +143,7 @@ func PrepareFilterMapForPolicies(policies []PolicyFile) (FilterMap, error) {
 					filterName:        fmt.Sprintf("%s.context.%s", r.Event, f[:operatorIdx]),
 					operatorAndValues: f[operatorIdx:],
 					policyIdx:         i,
+					policyName:        p.Name,
 				})
 			}
 		}
