@@ -17,6 +17,8 @@ func CreateEventsFromSignatures(startId events.ID, sigs []detect.Signature) {
 			continue
 		}
 
+		definitionMetadata := getDefinitionMetadata(m)
+
 		selectedEvents, err := s.GetSelectedEvents()
 		if err != nil {
 			logger.Errorw("Failed to load event", "error", err)
@@ -35,7 +37,7 @@ func CreateEventsFromSignatures(startId events.ID, sigs []detect.Signature) {
 			evtDependency = append(evtDependency, eventDefID)
 		}
 
-		newEventDef := events.NewDefinition(
+		newEventDef := events.NewDefinitionWithMetadata(
 			newEventDefID,                     // id,
 			events.Sys32Undefined,             // id32
 			m.EventName,                       // eventName
@@ -51,6 +53,7 @@ func CreateEventsFromSignatures(startId events.ID, sigs []detect.Signature) {
 				events.Capabilities{},
 			),
 			[]trace.ArgMeta{},
+			definitionMetadata,
 		)
 
 		err = events.Core.Add(newEventDefID, newEventDef)
@@ -61,4 +64,22 @@ func CreateEventsFromSignatures(startId events.ID, sigs []detect.Signature) {
 
 		newEventDefID++
 	}
+}
+
+func getDefinitionMetadata(m detect.SignatureMetadata) events.Metadata {
+	var severity string
+	s, ok := m.Properties["severity"]
+	if ok {
+		severity = s.(string)
+	}
+
+	return events.NewMetadata(
+		m.Description,
+		severity,
+		m.Tags,
+		map[string]string{
+			"signatureName": m.Name,
+			"signatureID":   m.ID,
+		},
+	)
 }

@@ -115,7 +115,7 @@ func PrepareLogger(logOptions []string, newBinary bool) (logger.LoggingConfig, e
 		agg      bool
 		filter   = logger.NewLoggerFilter()
 		interval = logger.DefaultFlushInterval
-		lvl      = logger.DefaultLevel
+		lvl      = logger.InfoLevel
 		err      error
 		w        = os.Stderr
 	)

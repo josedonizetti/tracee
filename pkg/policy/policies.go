@@ -188,6 +188,15 @@ func (ps *Policies) Lookup(id int) (*Policy, error) {
 	return p, nil
 }
 
+func (ps *Policies) LookupByName(name string) *Policy {
+	for p := range ps.Map() {
+		if p.Name == name {
+			return p
+		}
+	}
+	return nil
+}
+
 // MatchedNames returns a list of matched policies names based on
 // the given matched bitmap.
 func (ps *Policies) MatchedNames(matched uint64) []string {

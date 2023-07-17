@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+option go_package = "github.co/aquasecurity/tracee/api/v1";
+
+package tracee.v1beta1;
+
+import "types/api/v1beta1/event.proto";
+import "google/protobuf/field_mask.proto";
+
+message GetEventMetadataRequest {
+    optional string name = 1;
+}
+
+message GetEventMetadataResponse {
+    EventMetadata eventMetadata = 1;
+}
+
+message StreamEventsRequest {
+    repeated string policies = 1;
+    google.protobuf.FieldMask mask = 2;
+}
+
+message EnablePolicyRequest {
+    string policy_name = 1;
+}
+
+message EnablePolicyResponse {
+}
+
+message DisablePolicyRequest {
+    string policy_name = 1;
+}
+
+message DisablePolicyResponse {
+}
+
+message GetVersionRequest {
+}
+
+message GetVersionResponse {
+    string version = 1;
+}
+
+message EnablePolicyRuleRequest {
+    string policy_name = 1;
+    string rule_id = 2;
+}
+
+message EnablePolicyRuleResponse {
+}
+
+message DisablePolicyRuleRequest {
+    optional string policy_name = 1;
+    string rule_id = 2;
+}
+
+message DisablePolicyRuleResponse {
+}
+
+service TraceeService {
+    rpc GetEventMetadata(GetEventMetadataRequest) returns (GetEventMetadataResponse);
+    rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+
+    // global actions
+    rpc EnablePolicy(EnablePolicyRequest) returns (EnablePolicyResponse);
+    rpc DisablePolicy(DisablePolicyRequest) returns (DisablePolicyResponse);
+    rpc EnablePolicyRule(EnablePolicyRuleRequest) returns (EnablePolicyRuleResponse);
+    rpc DisablePolicyRule(DisablePolicyRuleRequest) returns (DisablePolicyRuleResponse);
+
+    rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}

@@ -69,13 +69,17 @@ func NewLogger(cfg LoggerConfig) LoggerInterface {
 	return zap.New(zapcore.NewCore(
 		cfg.Encoder,
 		zapcore.AddSync(cfg.Writer),
-		zapcore.Level(cfg.Level),
+		atom,
 	)).Sugar()
 }
 
 const (
 	DefaultLevel         = InfoLevel
 	DefaultFlushInterval = time.Duration(3) * time.Second
+)
+
+var (
+	atom = zap.NewAtomicLevelAt(DefaultLevel)
 )
 
 // LoggingConfig defines the configuration of the package level logging.
@@ -360,4 +364,8 @@ func Init(cfg LoggingConfig) {
 // Make sure tests don't crash when logging
 func init() {
 	Init(NewDefaultLoggingConfig())
+}
+
+func SetLevel(level Level) {
+	atom.SetLevel(level)
 }

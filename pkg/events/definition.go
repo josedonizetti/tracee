@@ -14,6 +14,23 @@ type Definition struct {
 	dependencies Dependencies
 	sets         []string
 	params       []trace.ArgMeta
+	metadata     Metadata
+}
+
+type Metadata struct {
+	description string
+	severity    string
+	tags        []string
+	misc        map[string]string
+}
+
+func NewMetadata(description, severity string, tags []string, misc map[string]string) Metadata {
+	return Metadata{
+		description: description,
+		severity:    severity,
+		tags:        tags,
+		misc:        misc,
+	}
 }
 
 func NewDefinition(
@@ -37,6 +54,32 @@ func NewDefinition(
 		dependencies: deps,
 		sets:         sets,
 		params:       params,
+	}
+}
+
+func NewDefinitionWithMetadata(
+	id ID,
+	id32Bit ID,
+	name string,
+	docPath string,
+	internal bool,
+	syscall bool,
+	sets []string,
+	deps Dependencies,
+	params []trace.ArgMeta,
+	metadata Metadata,
+) Definition {
+	return Definition{
+		id:           id,
+		id32Bit:      id32Bit,
+		name:         name,
+		docPath:      docPath,
+		internal:     internal,
+		syscall:      syscall,
+		dependencies: deps,
+		sets:         sets,
+		params:       params,
+		metadata:     metadata,
 	}
 }
 
@@ -78,6 +121,10 @@ func (d Definition) GetParams() []trace.ArgMeta {
 	return d.params
 }
 
+func (d Definition) GetMetadata() Metadata {
+	return d.metadata
+}
+
 func (d Definition) IsSignature() bool {
 	if d.id >= StartSignatureID && d.id <= MaxSignatureID {
 		return true
@@ -92,4 +139,20 @@ func (d Definition) IsNetwork() bool {
 	}
 
 	return false
+}
+
+func (m Metadata) GetDescription() string {
+	return m.description
+}
+
+func (m Metadata) GetSeverity() string {
+	return m.severity
+}
+
+func (m Metadata) GetTags() []string {
+	return m.tags
+}
+
+func (m Metadata) GetMisc() map[string]string {
+	return m.misc
 }

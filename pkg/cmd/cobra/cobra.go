@@ -21,7 +21,6 @@ import (
 	"github.com/aquasecurity/tracee/pkg/signatures/engine"
 	"github.com/aquasecurity/tracee/pkg/signatures/signature"
 	"github.com/aquasecurity/tracee/types/detect"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 func GetTraceeRunner(c *cobra.Command, version string) (cmd.Runner, error) {
@@ -212,23 +211,28 @@ func GetTraceeRunner(c *cobra.Command, version string) (cmd.Runner, error) {
 		return runner, errfmt.Errorf("failed preparing BPF object: %v", err)
 	}
 
-	cfg.ChanEvents = make(chan trace.Event, 1000)
+	// cfg.ChanEvents = make(chan trace.Event, 1000)
 
 	// Prepare the server
 
-	httpServer, err := server.PrepareServer(
-		viper.GetString(server.ListenEndpointFlag),
+	httpServer, err := server.PrepareHTTPServer(
+		viper.GetString(server.HTTPListenEndpointFlag),
 		viper.GetBool(server.MetricsEndpointFlag),
 		viper.GetBool(server.HealthzEndpointFlag),
 		viper.GetBool(server.PProfEndpointFlag),
 		viper.GetBool(server.PyroscopeAgentFlag),
 	)
-
 	if err != nil {
 		return runner, err
 	}
 
-	runner.Server = httpServer
+	grpcServer, err := flags.PrepareGRPCServer(viper.GetString(server.GRPCListenEndpointFlag))
+	if err != nil {
+		return runner, err
+	}
+
+	runner.HTTPServer = httpServer
+	runner.GRPCServer = grpcServer
 	runner.TraceeConfig = cfg
 	runner.Printer = p
 

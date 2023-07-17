@@ -1,10 +1,12 @@
 package ebpf
 
 import (
+	"context"
 	gocontext "context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -116,6 +118,9 @@ type Tracee struct {
 	// Specific Events Needs
 	triggerContexts trigger.Context
 	readyCallback   func(gocontext.Context)
+
+	policyManager  *policyManager
+	streamsManager *streamManager
 }
 
 func (t *Tracee) Stats() *metrics.Stats {
@@ -215,6 +220,7 @@ func New(cfg config.Config) (*Tracee, error) {
 		capturedFiles:   make(map[string]int64),
 		eventsState:     GetEssentialEventsList(),
 		eventSignatures: make(map[events.ID]bool),
+		streamsManager:  newStreamManager(),
 	}
 
 	// Initialize capabilities rings soon
@@ -233,6 +239,7 @@ func New(cfg config.Config) (*Tracee, error) {
 
 	// Events chosen by the user
 
+	var activePolicies uint64
 	for p := range t.config.Policies.Map() {
 		for e := range p.EventsToTrace {
 			var submit, emit uint64
@@ -242,9 +249,12 @@ func New(cfg config.Config) (*Tracee, error) {
 			}
 			utils.SetBit(&submit, uint(p.ID))
 			utils.SetBit(&emit, uint(p.ID))
+			utils.SetBit(&activePolicies, uint(p.ID))
 			t.eventsState[e] = events.EventState{Submit: submit, Emit: emit}
 		}
 	}
+
+	t.policyManager = &policyManager{active: activePolicies}
 
 	// Handle all essential events dependencies
 
@@ -1734,5 +1744,95 @@ func (t *Tracee) ready(ctx gocontext.Context) {
 
 //go:noinline
 func (t *Tracee) triggerMemDumpCall(address uint64, length uint64, eventHandle uint64) error {
+	return nil
+}
+
+// WIP, not ready, not thread safe
+
+func (t *Tracee) DisablePolicy(ctx context.Context, policyName string) {
+	p := t.config.Policies.LookupByName(policyName)
+	if p == nil {
+	}
+
+	t.policyManager.Disable(p.ID)
+}
+
+func (t *Tracee) EnablePolicy(ctx context.Context, policyName string) {
+	p := t.config.Policies.LookupByName(policyName)
+	if p == nil {
+	}
+
+	t.policyManager.Enable(p.ID)
+}
+
+func (t *Tracee) EnableEvent(ctx context.Context, policyName string, id events.ID) {
+	e, ok := t.eventsState[id]
+	if !ok {
+		return
+
+	}
+
+	emit := e.Emit
+	// todo, what if it is a catch all
+
+	p := t.config.Policies.LookupByName(policyName)
+	if p != nil {
+		utils.SetBit(&emit, uint(p.ID))                                     // isso aqui tem q ser atomico
+		t.eventsState[id] = events.EventState{Submit: e.Submit, Emit: emit} // isso aqui eu já nao sei, pq ninguém mais muda pos init
+	}
+}
+
+func (t *Tracee) DisableEvent(ctx context.Context, policyName string, id events.ID) {
+	e, ok := t.eventsState[id]
+	if !ok {
+		return
+
+	}
+
+	emit := e.Emit
+	// todo, what if it is a catch all
+
+	p := t.config.Policies.LookupByName(policyName)
+	if p != nil {
+		utils.ClearBit(&emit, uint(p.ID))
+		t.eventsState[id] = events.EventState{Submit: e.Submit, Emit: emit}
+	}
+
+}
+
+// pass nil to subscribe to all policies
+func (t *Tracee) Subscribe(policyNames []string) (Stream, error) {
+	// Making the buffered channel size the same as it was for ChanEvents
+	// TODO: do we need such big buffered channels?
+	var policyMask uint64
+
+	if policyNames == nil {
+		policyMask = 0xFFFFFFFFFFFFFFFF
+	}
+
+	for _, policyName := range policyNames {
+		p := t.config.Policies.LookupByName(policyName)
+		if p == nil {
+			return nil, errors.New("kabom")
+		}
+
+		utils.SetBit(&policyMask, uint(p.ID))
+	}
+
+	events := make(chan trace.Event, 10000)
+	s := &stream{policyMask, events}
+	t.streamsManager.addStream(s)
+
+	return s, nil
+}
+
+func (t *Tracee) Unsubscribe(s Stream) error {
+	st, ok := s.(*stream)
+	if !ok {
+		return errors.New("boom")
+	}
+	// removes subscriber than closes chanel
+	t.streamsManager.removeStream(st)
+	close(st.events)
 	return nil
 }

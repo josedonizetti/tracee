@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option go_package = "github.co/aquasecurity/tracee/api/v1";
+
+package tracee.v1beta1;
+
+message Policy {
+    string api_version = 1;
+    string kind = 2;
+    PolicyMetadata metadata = 3;
+    PolicySpec spec = 4;
+}
+
+// consider naming metada and use a different package
+message PolicyMetadata {
+    string name = 1;
+    map<string,string> annotations = 2;
+}
+
+message PolicySpec {
+    repeated string scope = 1;
+	repeated string default_actions = 2;
+	repeated Rule rules = 3;
+}
+
+message Rule {
+	string event = 1;
+	repeated string filters = 2;
+	repeated string actions = 3;
+}

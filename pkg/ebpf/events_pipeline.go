@@ -569,6 +569,12 @@ func (t *Tracee) sinkEvents(ctx context.Context, in <-chan *trace.Event) <-chan 
 				continue
 			}
 
+			if t.policyManager.IsPolicyDisabled(event.MatchedPoliciesUser) {
+				// fmt.Println("policy was disabled, dropping event")
+				t.eventsPool.Put(event)
+				continue
+			}
+
 			// Populate the event with the names of the matched policies.
 			event.MatchedPolicies = t.config.Policies.MatchedNames(event.MatchedPoliciesUser)
 
@@ -580,14 +586,10 @@ func (t *Tracee) sinkEvents(ctx context.Context, in <-chan *trace.Event) <-chan 
 				}
 			}
 
-			// Send the event to the printers.
-			select {
-			case t.config.ChanEvents <- *event:
-				_ = t.stats.EventCount.Increment()
-				t.eventsPool.Put(event)
-			case <-ctx.Done():
-				return
-			}
+			t.streamsManager.notify(ctx, event)
+			_ = t.stats.EventCount.Increment()
+			t.eventsPool.Put(event)
+
 		}
 	}()
 
