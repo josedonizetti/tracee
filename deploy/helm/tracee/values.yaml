@@ -82,6 +82,14 @@ config:
     - json
     - option:parse-arguments
 
+
+operator:
+  create: true
+  name: "tracee-operator"
+  serviceAccount:
+    name: "tracee-operator"
+  healthProbeBindAddress: :8081
+
 signatures:
   # config defines Common Expression Language (CEL) signatures that are loaded
   # by Tracee-Rules from the --rules-dir directory. If the config object is not
