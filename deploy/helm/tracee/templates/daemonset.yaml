@@ -33,8 +33,6 @@ spec:
           command:
             - /tracee/tracee
           args:
-            - --policy
-            - /tracee/policies
             - --config
             - /tracee/config.yaml
           {{- if .Values.webhook }}
@@ -77,9 +75,6 @@ spec:
               readOnly: true
               mountPath: /tracee/config.yaml
               subPath: config.yaml
-            - name: tracee-policies
-              readOnly: true
-              mountPath: /tracee/policies
             {{- if .Values.signatures.config }}
             - name: tracee-signatures
               mountPath: /tracee/signatures/signatures.yaml
@@ -122,9 +117,6 @@ spec:
         - name: tracee-config
           configMap:
             name: tracee-config
-        - name: tracee-policies
-          configMap:
-            name: tracee-policies
         {{- if .Values.signatures.config }}
         - name: tracee-signatures
           configMap:
