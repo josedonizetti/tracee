@@ -17,6 +17,7 @@ import (
 	forward "github.com/IBM/fluent-forward-go/fluent/client"
 	"github.com/Masterminds/sprig/v3"
 
+	"github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/config"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/logger"
@@ -32,7 +33,7 @@ type EventPrinter interface {
 	// Epilogue prints something after event printing ends (one time)
 	Epilogue(stats metrics.Stats)
 	// Print prints a single event
-	Print(event trace.Event)
+	Print(event v1beta1.Event)
 	// dispose of resources
 	Close()
 }
@@ -202,23 +203,32 @@ func (p tableEventPrinter) Preamble() {
 	fmt.Fprintln(p.out)
 }
 
-func (p tableEventPrinter) Print(event trace.Event) {
-	ut := time.Unix(0, int64(event.Timestamp))
+func (p tableEventPrinter) Print(event v1beta1.Event) {
+	// TODO time
+	// ut := time.Unix(0, int64(event.Timestamp))
+	ut := time.Now()
 	if p.relativeTS {
 		ut = ut.UTC()
 	}
 	timestamp := fmt.Sprintf("%02d:%02d:%02d:%06d", ut.Hour(), ut.Minute(), ut.Second(), ut.Nanosecond()/1000)
 
-	containerId := event.Container.ID
-	if len(containerId) > 12 {
-		containerId = containerId[:12]
-	}
-	containerImage := event.Container.ImageName
-	if len(containerImage) > 16 {
-		containerImage = containerImage[:16]
+	var (
+		containerId    string
+		containerImage string
+	)
+
+	if event.Context != nil && event.Context.Container != nil {
+		containerId = event.Context.Container.Id
+		if len(containerId) > 12 {
+			containerId = containerId[:12]
+		}
+		containerImage = event.Context.Container.Image.Name
+		if len(containerImage) > 16 {
+			containerImage = containerImage[:16]
+		}
 	}
 
-	eventName := event.EventName
+	eventName := event.Name
 	if len(eventName) > 25 {
 		eventName = eventName[:22] + "..."
 	}
@@ -229,56 +239,56 @@ func (p tableEventPrinter) Print(event trace.Event) {
 			fmt.Fprintf(p.out,
 				"%-16s %-17s %-13s %-12d %-12d %-6d %-16s %-7d %-7d %-7d %-16d %-25s ",
 				timestamp,
-				event.HostName,
+				"no-host-name", // event.HostName,
 				containerId,
-				event.MountNS,
-				event.PIDNS,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.ThreadID,
-				event.ParentProcessID,
-				event.ReturnValue,
-				event.EventName,
+				"no-mount-ns", // event.MountNS,
+				"no-pid-ns",   // event.PIDNaS,
+				event.Context.Process.RealUser.Id,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.Pid,
+				event.Context.Process.Thread.Tid,
+				event.Context.Process.Parent.Pid,
+				getReturnValue(event),
+				event.Name,
 			)
 		case config.ContainerModeEnabled:
 			fmt.Fprintf(p.out,
 				"%-16s %-17s %-13s %-12d %-12d %-6d %-16s %-7d/%-7d %-7d/%-7d %-7d/%-7d %-16d %-25s ",
 				timestamp,
-				event.HostName,
+				"no-host-name", // event.HostName,
 				containerId,
-				event.MountNS,
-				event.PIDNS,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.HostProcessID,
-				event.ThreadID,
-				event.HostThreadID,
-				event.ParentProcessID,
-				event.HostParentProcessID,
-				event.ReturnValue,
-				event.EventName,
+				"no-mount-ns", // event.MountNS,
+				"no-pid-ns",   // event.PIDNS,
+				event.Context.Process.RealUser.Id,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.NamespacedPid,
+				event.Context.Process.Pid,
+				event.Context.Process.Thread.NamespacedTid,
+				event.Context.Process.Thread.Tid,
+				event.Context.Process.Parent.NamespacedPid,
+				event.Context.Process.Parent.Pid,
+				getReturnValue(event),
+				event.Name,
 			)
 		case config.ContainerModeEnriched:
 			fmt.Fprintf(p.out,
 				"%-16s %-17s %-13s %-16s %-12d %-12d %-6d %-16s %-7d/%-7d %-7d/%-7d %-7d/%-7d %-16d %-25s ",
 				timestamp,
-				event.HostName,
+				"no-hostname", //event.HostName,
 				containerId,
-				event.Container.ImageName,
-				event.MountNS,
-				event.PIDNS,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.HostProcessID,
-				event.ThreadID,
-				event.HostThreadID,
-				event.ParentProcessID,
-				event.HostParentProcessID,
-				event.ReturnValue,
-				event.EventName,
+				event.Context.Container.Image.Name,
+				"no-mount-ns", //event.MountNS,
+				"no-pid-ns",   //event.PIDNS,
+				event.Context.Process.RealUser.Id,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.NamespacedPid,
+				event.Context.Process.Pid,
+				event.Context.Process.Thread.NamespacedTid,
+				event.Context.Process.Thread.Tid,
+				event.Context.Process.Parent.NamespacedPid,
+				event.Context.Process.Parent.Pid,
+				getReturnValue(event),
+				event.Name,
 			)
 		}
 	} else {
@@ -287,11 +297,11 @@ func (p tableEventPrinter) Print(event trace.Event) {
 			fmt.Fprintf(p.out,
 				"%-16s %-6d %-16s %-7d %-7d %-16d %-25s ",
 				timestamp,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.ThreadID,
-				event.ReturnValue,
+				event.Context.Process.RealUser.Id.Value,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.Pid.Value,
+				event.Context.Process.Thread.Tid.Value,
+				getReturnValue(event),
 				eventName,
 			)
 		case config.ContainerModeEnabled:
@@ -299,13 +309,13 @@ func (p tableEventPrinter) Print(event trace.Event) {
 				"%-16s %-13s %-6d %-16s %-7d/%-7d %-7d/%-7d %-16d %-25s ",
 				timestamp,
 				containerId,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.HostProcessID,
-				event.ThreadID,
-				event.HostThreadID,
-				event.ReturnValue,
+				event.Context.Process.RealUser.Id.Value,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.NamespacedPid.Value,
+				event.Context.Process.Pid.Value,
+				event.Context.Process.Thread.NamespacedTid.Value,
+				event.Context.Process.Thread.Tid.Value,
+				getReturnValue(event),
 				eventName,
 			)
 		case config.ContainerModeEnriched:
@@ -314,25 +324,25 @@ func (p tableEventPrinter) Print(event trace.Event) {
 				timestamp,
 				containerId,
 				containerImage,
-				event.UserID,
-				event.ProcessName,
-				event.ProcessID,
-				event.HostProcessID,
-				event.ThreadID,
-				event.HostThreadID,
-				event.ReturnValue,
+				event.Context.Process.RealUser.Id.Value,
+				event.Context.Process.Thread.Name,
+				event.Context.Process.NamespacedPid.Value,
+				event.Context.Process.Pid.Value,
+				event.Context.Process.Thread.NamespacedTid.Value,
+				event.Context.Process.Thread.Tid.Value,
+				getReturnValue(event),
 				eventName,
 			)
 		}
 	}
-	for i, arg := range event.Args {
-		name := arg.Name
-		value := arg.Value
 
+	i := 0
+	for name, eventValue := range event.EventData {
+		value := GetFromEventValueString(eventValue)
 		// triggeredBy from pkg/ebpf/finding.go breaks the table output,
 		// so we simplify it
 		if name == "triggeredBy" {
-			value = fmt.Sprintf("%s", value.(map[string]interface{})["name"])
+			// value = fmt.Sprintf("%s", value.(map[string]interface{})["name"])
 		}
 
 		if i == 0 {
@@ -340,6 +350,7 @@ func (p tableEventPrinter) Print(event trace.Event) {
 		} else {
 			fmt.Fprintf(p.out, ", %s: %v", name, value)
 		}
+		i++
 	}
 	fmt.Fprintln(p.out)
 }
@@ -375,7 +386,7 @@ func (p *templateEventPrinter) Init() error {
 
 func (p templateEventPrinter) Preamble() {}
 
-func (p templateEventPrinter) Print(event trace.Event) {
+func (p templateEventPrinter) Print(event v1beta1.Event) {
 	if p.templateObj != nil {
 		err := (*p.templateObj).Execute(p.out, event)
 		if err != nil {
@@ -399,7 +410,7 @@ func (p jsonEventPrinter) Init() error { return nil }
 
 func (p jsonEventPrinter) Preamble() {}
 
-func (p jsonEventPrinter) Print(event trace.Event) {
+func (p jsonEventPrinter) Print(event v1beta1.Event) {
 	eBytes, err := json.Marshal(event)
 	if err != nil {
 		logger.Errorw("Error marshaling event to json", "error", err)
@@ -465,7 +476,7 @@ func (p *gobEventPrinter) Init() error {
 
 func (p *gobEventPrinter) Preamble() {}
 
-func (p *gobEventPrinter) Print(event trace.Event) {
+func (p *gobEventPrinter) Print(event v1beta1.Event) {
 	err := p.outEnc.Encode(event)
 	if err != nil {
 		logger.Errorw("Error encoding event to gob", "error", err)
@@ -486,7 +497,7 @@ func (p *ignoreEventPrinter) Init() error {
 
 func (p *ignoreEventPrinter) Preamble() {}
 
-func (p *ignoreEventPrinter) Print(event trace.Event) {}
+func (p *ignoreEventPrinter) Print(event v1beta1.Event) {}
 
 func (p *ignoreEventPrinter) Epilogue(stats metrics.Stats) {}
 
@@ -582,7 +593,7 @@ func (p *forwardEventPrinter) Init() error {
 
 func (p *forwardEventPrinter) Preamble() {}
 
-func (p *forwardEventPrinter) Print(event trace.Event) {
+func (p *forwardEventPrinter) Print(event v1beta1.Event) {
 	if p.client == nil {
 		logger.Errorw("Invalid Forward client")
 		return
@@ -673,7 +684,7 @@ func (ws *webhookEventPrinter) Init() error {
 
 func (ws *webhookEventPrinter) Preamble() {}
 
-func (ws *webhookEventPrinter) Print(event trace.Event) {
+func (ws *webhookEventPrinter) Print(event v1beta1.Event) {
 	var (
 		payload []byte
 		err     error
@@ -720,4 +731,87 @@ func (ws *webhookEventPrinter) Print(event trace.Event) {
 func (ws *webhookEventPrinter) Epilogue(stats metrics.Stats) {}
 
 func (ws *webhookEventPrinter) Close() {
+}
+
+// TEMP
+
+func getReturnValue(event v1beta1.Event) int64 {
+	if v, ok := event.EventData["returnValue"]; ok {
+		if r := v.GetInt64(); r != nil {
+			return r.GetValue()
+		}
+	}
+
+	// return error? acho que nao, mas preciso pensar o porque!
+	return 0
+}
+
+func GetFromEventValueString(ev *v1beta1.EventValue) string {
+	fmt.Printf("aqui1 %T\n", ev.Value)
+
+	switch ev.Value.(type) {
+	case *v1beta1.EventValue_Int32:
+		return fmt.Sprintf("%d", ev.GetInt32())
+	case *v1beta1.EventValue_Int64:
+		return fmt.Sprintf("%d", ev.GetInt64())
+	case *v1beta1.EventValue_UInt32:
+		return fmt.Sprintf("%d", ev.GetUInt32())
+	case *v1beta1.EventValue_UInt64:
+		return fmt.Sprintf("%d", ev.GetUInt64())
+	case *v1beta1.EventValue_Str:
+		return ev.GetStr().GetValue()
+	case *v1beta1.EventValue_Bytes:
+		return fmt.Sprintf("%s", ev.GetBytes())
+	case *v1beta1.EventValue_Bool:
+		return fmt.Sprintf("%t", ev.GetBool())
+	case *v1beta1.EventValue_StrArray:
+		return ev.GetStrArray().String()
+	case *v1beta1.EventValue_Int32Array:
+		return ev.GetInt32Array().String()
+	case *v1beta1.EventValue_UInt64Array:
+		return ev.GetUInt64Array().String()
+	case *v1beta1.EventValue_Sockaddr:
+		return ev.GetSockaddr().String()
+	case *v1beta1.EventValue_Cred:
+		return ev.GetCred().String()
+	case *v1beta1.EventValue_Timespec:
+		return ev.GetTimespec().String()
+	case *v1beta1.EventValue_Args:
+		return ""
+	case *v1beta1.EventValue_TriggeredBy:
+		return ev.GetTriggeredBy().String()
+	case *v1beta1.EventValue_HookedSyscalls:
+		return ev.GetHookedSyscalls().String()
+	case *v1beta1.EventValue_HookedSeqOps:
+		return ev.GetHookedSeqOps().String()
+	case *v1beta1.EventValue_Ipv4:
+		return ev.GetIpv4().String()
+	case *v1beta1.EventValue_Ipv6:
+		return ev.GetIpv6().String()
+	case *v1beta1.EventValue_Tcp:
+		return ev.GetTcp().String()
+	case *v1beta1.EventValue_Udp:
+		return ev.GetUdp().String()
+	case *v1beta1.EventValue_Icmp:
+		return ev.GetIcmp().String()
+	case *v1beta1.EventValue_Icmpv6:
+		return ev.GetIcmpv6().String()
+	case *v1beta1.EventValue_Dns:
+		return ev.GetDns().String()
+	case *v1beta1.EventValue_DnsQuestions:
+		return ev.GetDnsQuestions().String()
+	case *v1beta1.EventValue_DnsResponses:
+		return ev.GetDnsResponses().String()
+	case *v1beta1.EventValue_PacketMetadata:
+		return ev.GetPacketMetadata().String()
+	case *v1beta1.EventValue_Http:
+		return ev.GetHttp().String()
+	case *v1beta1.EventValue_HttpRequest:
+		return ev.GetHttpRequest().String()
+	case *v1beta1.EventValue_HttpResponse:
+		return ev.GetHttpResponse().String()
+	case *v1beta1.EventValue_Struct:
+		return ev.GetStruct().String()
+	}
+	return ""
 }
