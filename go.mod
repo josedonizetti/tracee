@@ -1,6 +1,8 @@
 module github.com/aquasecurity/tracee
 
-go 1.19
+go 1.21
+
+toolchain go1.21.1
 
 require (
 	github.com/IBM/fluent-forward-go v0.2.1
@@ -178,3 +180,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.68 // indirect
 )
+
+replace github.com/aquasecurity/tracee/api v0.0.0-20231222010915-0f73aad36da9 => ./api
