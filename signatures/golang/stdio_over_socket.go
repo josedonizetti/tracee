@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type StdioOverSocket struct {
@@ -46,7 +46,7 @@ func (sig *StdioOverSocket) GetSelectedEvents() ([]detect.SignatureEventSelector
 }
 
 func (sig *StdioOverSocket) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
@@ -54,7 +54,7 @@ func (sig *StdioOverSocket) OnEvent(event protocol.Event) error {
 	var sockfd int
 	var err error
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_socket_connect":
 		sockfd, err = helpers.GetTraceeIntArgumentByName(eventObj, "sockfd")
 		if err != nil {

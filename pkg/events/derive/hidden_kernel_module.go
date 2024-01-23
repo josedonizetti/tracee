@@ -15,11 +15,11 @@ import (
 
 	bpf "github.com/aquasecurity/libbpfgo"
 
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/capabilities"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
 	"github.com/aquasecurity/tracee/pkg/logger"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 var (
@@ -51,8 +51,8 @@ func HiddenKernelModule() DeriveFunction {
 }
 
 func deriveHiddenKernelModulesArgs() deriveArgsFunction {
-	return func(event trace.Event) ([]interface{}, error) {
-		address, err := parse.ArgVal[uint64](event.Args, "address")
+	return func(event *types.Event) ([]interface{}, error) {
+		address, err := apiutils.GetUInt64Arg(event, "address")
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +61,7 @@ func deriveHiddenKernelModulesArgs() deriveArgsFunction {
 			return nil, nil // event in cache: already reported.
 		}
 
-		flags, err := parse.ArgVal[uint32](event.Args, "flags")
+		flags, err := apiutils.GetUInt32Arg(event, "flags")
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +88,7 @@ func deriveHiddenKernelModulesArgs() deriveArgsFunction {
 		// Parse module name if possible
 
 		var name string
-		nameBytes, err := parse.ArgVal[[]byte](event.Args, "name")
+		nameBytes, err := apiutils.GetBytesArg(event, "name")
 		if err != nil {
 			name = ""
 			// Don't fail hard, submit it without a name!
@@ -101,7 +101,7 @@ func deriveHiddenKernelModulesArgs() deriveArgsFunction {
 		// Parse module srcversion if possible
 
 		var srcversion string
-		srcversionBytes, err := parse.ArgVal[[]byte](event.Args, "srcversion")
+		srcversionBytes, err := apiutils.GetBytesArg(event, "srcversion")
 		if err != nil {
 			srcversion = ""
 			// Don't fail hard, submit it without a srcversion!

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type IllegitimateShell struct {
@@ -48,15 +48,15 @@ func (sig *IllegitimateShell) GetSelectedEvents() ([]detect.SignatureEventSelect
 }
 
 func (sig *IllegitimateShell) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_bprm_check":
 		for _, webServersProcessName := range sig.webServersProcessNames {
-			if webServersProcessName == eventObj.ProcessName {
+			if webServersProcessName == eventObj.GetContext().GetProcess().GetThread().GetName() {
 				pathname, err := helpers.GetTraceeStringArgumentByName(eventObj, "pathname")
 				if err != nil {
 					return err

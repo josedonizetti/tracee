@@ -18,6 +18,7 @@ import (
 	"github.com/aquasecurity/tracee/pkg/events/parse"
 	"github.com/aquasecurity/tracee/pkg/filehash"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils"
 	"github.com/aquasecurity/tracee/types/trace"
 )
@@ -361,6 +362,16 @@ func (t *Tracee) getOrigEvtTimestamp(event *trace.Event) int {
 
 	// if the time was normalized to "wall" time, subtract the boot time
 	return event.Timestamp - int(t.bootTime)
+}
+
+func (t *Tracee) getOrigEvtTimestamp2(event *types.Event) int {
+	if t.config.Output.RelativeTime {
+		// if the time was normalized relative to tracee start time, add the start time back
+		return int(event.Timestamp.GetNanos()) + int(t.startTime)
+	}
+
+	// if the time was normalized to "wall" time, subtract the boot time
+	return int(event.Timestamp.GetNanos()) - int(t.bootTime)
 }
 
 // processSchedProcessFork processes a sched_process_fork event by normalizing the start time.

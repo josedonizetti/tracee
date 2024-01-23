@@ -9,19 +9,19 @@ import (
 	"github.com/aquasecurity/tracee/pkg/logger"
 	"github.com/aquasecurity/tracee/pkg/proctree"
 	"github.com/aquasecurity/tracee/pkg/signatures/engine"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 // engineEvents stage in the pipeline allows signatures detection to be executed in the pipeline
-func (t *Tracee) engineEvents(ctx context.Context, in <-chan *trace.Event) (<-chan *trace.Event, <-chan error) {
-	out := make(chan *trace.Event)
+func (t *Tracee) engineEvents(ctx context.Context, in <-chan *types.Event) (<-chan *types.Event, <-chan error) {
+	out := make(chan *types.Event)
 	errc := make(chan error, 1)
 
 	engineOutput := make(chan *detect.Finding, 10000)
 	engineInput := make(chan protocol.Event, 10000)
-	engineOutputEvents := make(chan *trace.Event, 10000)
+	engineOutputEvents := make(chan *types.Event, 10000)
 	source := engine.EventSources{Tracee: engineInput}
 
 	// Prepare built in data sources
@@ -54,12 +54,12 @@ func (t *Tracee) engineEvents(ctx context.Context, in <-chan *trace.Event) (<-ch
 	go t.sigEngine.Start(ctx)
 
 	// Create a function for feeding the engine with an event
-	feedFunc := func(event *trace.Event) {
+	feedFunc := func(event *types.Event) {
 		if event == nil {
 			return // might happen during initialization (ctrl+c seg faults)
 		}
 
-		id := events.ID(event.EventID)
+		id := events.ID(event.Id)
 
 		// if the event is marked as submit, we pass it to the engine
 		if t.eventsState[id].Submit > 0 {
@@ -112,7 +112,7 @@ func (t *Tracee) engineEvents(ctx context.Context, in <-chan *trace.Event) (<-ch
 					continue // might happen during initialization (ctrl+c seg faults)
 				}
 
-				event, err := FindingToEvent(finding)
+				event, err := FindingToEvent2(finding)
 				if err != nil {
 					t.handleError(err)
 					continue

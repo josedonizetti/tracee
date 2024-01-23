@@ -33,20 +33,22 @@ func (t *Tracee) handleNetCaptureEvents(ctx context.Context) {
 	logger.Debugw("Starting handleNetCaptureEvents goroutine")
 	defer logger.Debugw("Stopped handleNetCaptureEvents goroutine")
 
-	var errChanList []<-chan error
+	// TODO: josedonizetti fixme
 
-	// source pipeline stage (re-used from regular pipeline)
-	eventsChan, errChan := t.decodeEvents(ctx, t.netCapChannel)
-	errChanList = append(errChanList, errChan)
+	// var errChanList []<-chan error
+
+	// // source pipeline stage (re-used from regular pipeline)
+	// eventsChan, errChan := t.decodeEvents(ctx, t.netCapChannel)
+	// errChanList = append(errChanList, errChan)
 
 	// process events stage (network capture only)
-	errChan = t.processNetCapEvents(ctx, eventsChan)
-	errChanList = append(errChanList, errChan)
+	// errChan = t.processNetCapEvents(ctx, eventsChan)
+	// errChanList = append(errChanList, errChan)
 
-	// pipeline started, wait for completion.
-	if err := t.WaitForPipeline(errChanList...); err != nil {
-		logger.Errorw("Pipeline", "error", err)
-	}
+	// // pipeline started, wait for completion.
+	// if err := t.WaitForPipeline(errChanList...); err != nil {
+	// 	logger.Errorw("Pipeline", "error", err)
+	// }
 }
 
 func (t *Tracee) processNetCapEvents(ctx context.Context, in <-chan *trace.Event) <-chan error {

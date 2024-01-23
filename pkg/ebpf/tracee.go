@@ -16,6 +16,7 @@ import (
 	bpf "github.com/aquasecurity/libbpfgo"
 	"github.com/aquasecurity/libbpfgo/helpers"
 
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/bucketscache"
 	"github.com/aquasecurity/tracee/pkg/bufferdecoder"
 	"github.com/aquasecurity/tracee/pkg/capabilities"
@@ -40,6 +41,7 @@ import (
 	"github.com/aquasecurity/tracee/pkg/proctree"
 	"github.com/aquasecurity/tracee/pkg/signatures/engine"
 	"github.com/aquasecurity/tracee/pkg/streams"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils"
 	"github.com/aquasecurity/tracee/pkg/utils/proc"
 	"github.com/aquasecurity/tracee/pkg/utils/sharedobjs"
@@ -68,6 +70,7 @@ type Tracee struct {
 	eventsPool       *sync.Pool
 	eventsParamTypes map[events.ID][]bufferdecoder.ArgType
 	eventProcessor   map[events.ID][]func(evt *trace.Event) error
+	eventProcessor2  map[events.ID][]func(evt *types.Event) error
 	eventDerivations derive.Table
 	eventSignatures  map[events.ID]bool
 	// Artifacts
@@ -1280,7 +1283,7 @@ func (t *Tracee) Run(ctx gocontext.Context) error {
 
 	if pcaps.PcapsEnabled(t.config.Capture.Net) {
 		t.netCapPerfMap.Poll(pollTimeout)
-		go t.handleNetCaptureEvents(ctx)
+		// go t.handleNetCaptureEvents(ctx) TODO: josedonizetti fixme
 	}
 
 	// Logging perf buffer
@@ -1462,14 +1465,16 @@ func (t *Tracee) getSelfLoadedPrograms(kprobesOnly bool) map[string]int {
 // invokeInitEvents emits Tracee events, called Initialization Events, that are generated from the
 // userland process itself, and not from the kernel. These events usually serve as informational
 // events for the signatures engine/logic.
-func (t *Tracee) invokeInitEvents(out chan *trace.Event) {
+func (t *Tracee) invokeInitEvents(out chan *types.Event) {
 	var emit uint64
 
-	setMatchedPolicies := func(event *trace.Event, matchedPolicies uint64, pols *policy.Policies) {
+	setMatchedPolicies := func(event *types.Event, matchedPolicies uint64, pols *policy.Policies) {
 		event.PoliciesVersion = pols.Version()
 		event.MatchedPoliciesKernel = matchedPolicies
 		event.MatchedPoliciesUser = matchedPolicies
-		event.MatchedPolicies = pols.MatchedNames(matchedPolicies)
+		event.Policies = &pb.Policies{
+			Matched: pols.MatchedNames(matchedPolicies),
+		}
 	}
 
 	// Initial namespace events
@@ -1477,8 +1482,8 @@ func (t *Tracee) invokeInitEvents(out chan *trace.Event) {
 	emit = t.eventsState[events.InitNamespaces].Emit
 	if emit > 0 {
 		systemInfoEvent := events.InitNamespacesEvent()
-		setMatchedPolicies(&systemInfoEvent, emit, t.config.Policies)
-		out <- &systemInfoEvent
+		setMatchedPolicies(systemInfoEvent, emit, t.config.Policies)
+		out <- systemInfoEvent
 		_ = t.stats.EventCount.Increment()
 	}
 
@@ -1487,8 +1492,8 @@ func (t *Tracee) invokeInitEvents(out chan *trace.Event) {
 	emit = t.eventsState[events.ExistingContainer].Emit
 	if emit > 0 {
 		for _, e := range events.ExistingContainersEvents(t.containers, t.config.NoContainersEnrich) {
-			setMatchedPolicies(&e, emit, t.config.Policies)
-			out <- &e
+			setMatchedPolicies(e, emit, t.config.Policies)
+			out <- e
 			_ = t.stats.EventCount.Increment()
 		}
 	}
@@ -1497,7 +1502,7 @@ func (t *Tracee) invokeInitEvents(out chan *trace.Event) {
 
 	emit = t.eventsState[events.FtraceHook].Emit
 	if emit > 0 {
-		ftraceBaseEvent := events.GetFtraceBaseEvent()
+		ftraceBaseEvent := events.GetFtraceBaseEvent2()
 		setMatchedPolicies(ftraceBaseEvent, emit, t.config.Policies)
 		logger.Debugw("started ftraceHook goroutine")
 
@@ -1509,7 +1514,7 @@ func (t *Tracee) invokeInitEvents(out chan *trace.Event) {
 		// once that happens.
 		selfLoadedFtraceProgs := t.getSelfLoadedPrograms(true)
 
-		go events.FtraceHookEvent(t.stats.EventCount, out, ftraceBaseEvent, selfLoadedFtraceProgs)
+		go events.FtraceHookEvent2(t.stats.EventCount, out, ftraceBaseEvent, selfLoadedFtraceProgs)
 	}
 }
 

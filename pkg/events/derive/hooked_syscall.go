@@ -7,10 +7,10 @@ import (
 
 	"github.com/aquasecurity/libbpfgo/helpers"
 
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 const (
@@ -33,13 +33,13 @@ func DetectHookedSyscall(kernelSymbols *helpers.KernelSymbolTable) DeriveFunctio
 }
 
 func deriveDetectHookedSyscallArgs(kernelSymbols *helpers.KernelSymbolTable) deriveArgsFunction {
-	return func(event trace.Event) ([]interface{}, error) {
-		syscallId, err := parse.ArgVal[int32](event.Args, "syscall_id")
+	return func(event *types.Event) ([]interface{}, error) {
+		syscallId, err := apiutils.GetInt32Arg(event, "syscall_id")
 		if err != nil {
 			return nil, errfmt.Errorf("error parsing syscall_id arg: %v", err)
 		}
 
-		address, err := parse.ArgVal[uint64](event.Args, "syscall_address")
+		address, err := apiutils.GetUInt64Arg(event, "syscall_address")
 		if err != nil {
 			return nil, errfmt.Errorf("error parsing syscall_address arg: %v", err)
 		}

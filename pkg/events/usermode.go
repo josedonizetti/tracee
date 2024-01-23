@@ -16,6 +16,7 @@
 package events
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,30 +24,62 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/containers"
-	"github.com/aquasecurity/tracee/pkg/containers/runtime"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/trace"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const InitProcNsDir = "/proc/1/ns"
 
 // InitNamespacesEvent collect the init process namespaces and create event from
 // them.
-func InitNamespacesEvent() trace.Event {
+func InitNamespacesEvent() *types.Event {
 	initNamespacesDef := Core.GetDefinitionByID(InitNamespaces)
-	initNamespacesArgs := getInitNamespaceArguments()
+	initNamespacesArgs := getInitNamespaceArguments2()
 
-	initNamespacesEvent := trace.Event{
-		Timestamp:   int(time.Now().UnixNano()),
-		ProcessName: "tracee-ebpf",
-		EventID:     int(InitNamespaces),
-		EventName:   initNamespacesDef.GetName(),
-		ArgsNum:     len(initNamespacesArgs),
-		Args:        initNamespacesArgs,
+	initNamespacesEvent := &types.Event{
+		Event: &pb.Event{
+			Timestamp: timestamppb.New(time.Now()),
+			Context: &pb.Context{
+				Process: &pb.Process{
+					Thread: &pb.Thread{
+						Name: "tracee-ebpf",
+					},
+				},
+			},
+			Id:   uint32(InitNamespaces),
+			Name: initNamespacesDef.GetName(),
+			Data: initNamespacesArgs,
+		},
 	}
 
 	return initNamespacesEvent
+}
+
+func getInitNamespaceArguments2() []*pb.EventValue {
+	initNamespaces := fetchInitNamespaces()
+	eventDefinition := Core.GetDefinitionByID(InitNamespaces)
+	initNamespacesArgs := make([]*pb.EventValue, len(eventDefinition.GetParams()))
+
+	params := eventDefinition.GetParams()
+
+	for i, arg := range initNamespacesArgs {
+		value := initNamespaces[arg.Name]
+
+		arg := &pb.EventValue{
+			Name: params[i].Name,
+			Value: &pb.EventValue_UInt32{
+				UInt32: uint32(value),
+			},
+		}
+
+		initNamespacesArgs[i] = arg
+	}
+
+	return initNamespacesArgs
 }
 
 // getInitNamespaceArguments fetches the namespaces of the init process and
@@ -91,36 +124,44 @@ func fetchInitNamespaces() map[string]uint32 {
 }
 
 // ExistingContainersEvents returns a list of events for each existing container
-func ExistingContainersEvents(cts *containers.Containers, enrichDisabled bool) []trace.Event {
-	var events []trace.Event
+func ExistingContainersEvents(cts *containers.Containers, enrichDisabled bool) []*types.Event {
+	var events []*types.Event
 
 	def := Core.GetDefinitionByID(ExistingContainer)
 
-	for id, info := range cts.GetContainers() {
-		container := runtime.ContainerMetadata{}
-		if !enrichDisabled {
-			container, _ = cts.EnrichCgroupInfo(uint64(id))
-		}
-		params := def.GetParams()
-		args := []trace.Argument{
-			{ArgMeta: params[0], Value: info.Runtime.String()},
-			{ArgMeta: params[1], Value: info.Container.ContainerId},
-			{ArgMeta: params[2], Value: info.Ctime.UnixNano()},
-			{ArgMeta: params[3], Value: container.Image},
-			{ArgMeta: params[3], Value: container.ImageDigest},
-			{ArgMeta: params[4], Value: container.Name},
-			{ArgMeta: params[5], Value: container.Pod.Name},
-			{ArgMeta: params[6], Value: container.Pod.Namespace},
-			{ArgMeta: params[7], Value: container.Pod.UID},
-			{ArgMeta: params[8], Value: container.Pod.Sandbox},
-		}
-		existingContainerEvent := trace.Event{
-			Timestamp:   int(time.Now().UnixNano()),
-			ProcessName: "tracee-ebpf",
-			EventID:     int(ExistingContainer),
-			EventName:   def.GetName(),
-			ArgsNum:     len(args),
-			Args:        args,
+	for id, _ := range cts.GetContainers() {
+		// container := runtime.ContainerMetadata{}
+		// if !enrichDisabled {
+		// 	container, _ = cts.EnrichCgroupInfo(uint64(id))
+		// }
+		// params := def.GetParams()
+		// args := []trace.Argument{
+		// 	{ArgMeta: params[0], Value: info.Runtime.String()},
+		// 	{ArgMeta: params[1], Value: info.Container.ContainerId},
+		// 	{ArgMeta: params[2], Value: info.Ctime.UnixNano()},
+		// 	{ArgMeta: params[3], Value: container.Image},
+		// 	{ArgMeta: params[3], Value: container.ImageDigest},
+		// 	{ArgMeta: params[4], Value: container.Name},
+		// 	{ArgMeta: params[5], Value: container.Pod.Name},
+		// 	{ArgMeta: params[6], Value: container.Pod.Namespace},
+		// 	{ArgMeta: params[7], Value: container.Pod.UID},
+		// 	{ArgMeta: params[8], Value: container.Pod.Sandbox},
+		// }
+		fmt.Sprintf("id: %d", id)
+		existingContainerEvent := &types.Event{
+			Event: &pb.Event{
+				Timestamp: timestamppb.New(time.Now()),
+				Context: &pb.Context{
+					Process: &pb.Process{
+						Thread: &pb.Thread{
+							Name: "tracee",
+						},
+					},
+				},
+				Id:   uint32(ExistingContainer),
+				Name: def.GetName(),
+				// Args:        args, // todo fix me
+			},
 		}
 		events = append(events, existingContainerEvent)
 	}

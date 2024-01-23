@@ -4,13 +4,13 @@
 package queue
 
 import (
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 type CacheConfig EventQueue
 
 type EventQueue interface {
 	String() string
-	Enqueue(*trace.Event)
-	Dequeue() *trace.Event
+	Enqueue(*types.Event)
+	Dequeue() *types.Event
 }

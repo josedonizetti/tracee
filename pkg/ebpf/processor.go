@@ -9,6 +9,7 @@ import (
 	"github.com/aquasecurity/tracee/pkg/events"
 	"github.com/aquasecurity/tracee/pkg/logger"
 	"github.com/aquasecurity/tracee/pkg/proctree"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/trace"
 )
 
@@ -32,6 +33,23 @@ func (t *Tracee) processEvent(event *trace.Event) []error {
 		err := processor(event)
 		if err != nil {
 			logger.Errorw("Error processing event", "event", event.EventName, "error", err)
+			errs = append(errs, err)
+		}
+	}
+
+	return errs
+}
+
+func (t *Tracee) processEvent2(event *types.Event) []error {
+	var errs []error
+
+	processors := t.eventProcessor2[events.ID(event.Id)]              // this event processors
+	processors = append(processors, t.eventProcessor2[events.All]...) // all events processors
+
+	for _, processor := range processors {
+		err := processor(event)
+		if err != nil {
+			logger.Errorw("Error processing event", "event", event.Name, "error", err)
 			errs = append(errs, err)
 		}
 	}

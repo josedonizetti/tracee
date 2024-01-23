@@ -7,14 +7,14 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"golang.org/x/exp/maps"
 
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
 	"github.com/aquasecurity/tracee/pkg/filters"
 	"github.com/aquasecurity/tracee/pkg/logger"
 	"github.com/aquasecurity/tracee/pkg/policy"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils/sharedobjs"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 func SymbolsLoaded(
@@ -106,7 +106,7 @@ func initSymbolsLoadedEventGenerator(
 }
 
 func (symbsLoadedGen *symbolsLoadedEventGenerator) deriveArgs(
-	event trace.Event,
+	event *types.Event,
 ) (
 	[]interface{}, error,
 ) {
@@ -122,7 +122,8 @@ func (symbsLoadedGen *symbolsLoadedEventGenerator) deriveArgs(
 	matchedSyms, ok := symbsLoadedGen.getSymbolsFromCache(loadingObjectInfo.Id)
 	if ok {
 		if len(matchedSyms) > 0 {
-			hash, _ := parse.ArgVal[string](event.Args, "sha256")
+
+			hash, _ := apiutils.GetStringArg(event, "sha256")
 			return []interface{}{loadingObjectInfo.Path, matchedSyms, hash}, nil
 		}
 		return nil, nil
@@ -153,7 +154,7 @@ func (symbsLoadedGen *symbolsLoadedEventGenerator) deriveArgs(
 
 	symbsLoadedGen.libsCache.Add(loadingObjectInfo.Id, exportedWatchSymbols)
 	if len(exportedWatchSymbols) > 0 {
-		hash, _ := parse.ArgVal[string](event.Args, "sha256")
+		hash, _ := apiutils.GetStringArg(event, "sha256")
 		return []interface{}{loadingObjectInfo.Path, exportedWatchSymbols, hash}, nil
 	}
 
@@ -199,22 +200,22 @@ func (symbsLoadedGen *symbolsLoadedEventGenerator) getSymbolsFromCache(id shared
 }
 
 // getSharedObjectInfo extract from SO loading event the information available about the SO
-func getSharedObjectInfo(event trace.Event) (sharedobjs.ObjInfo, error) {
+func getSharedObjectInfo(event *types.Event) (sharedobjs.ObjInfo, error) {
 	var objInfo sharedobjs.ObjInfo
 
-	loadedObjectInode, err := parse.ArgVal[uint64](event.Args, "inode")
+	loadedObjectInode, err := apiutils.GetUInt64Arg(event, "inode")
 	if err != nil {
 		return objInfo, errfmt.WrapError(err)
 	}
-	loadedObjectDevice, err := parse.ArgVal[uint32](event.Args, "dev")
+	loadedObjectDevice, err := apiutils.GetUInt32Arg(event, "dev")
 	if err != nil {
 		return objInfo, errfmt.WrapError(err)
 	}
-	loadedObjectCtime, err := parse.ArgVal[uint64](event.Args, "ctime")
+	loadedObjectCtime, err := apiutils.GetUInt64Arg(event, "ctime")
 	if err != nil {
 		return objInfo, errfmt.WrapError(err)
 	}
-	loadedObjectPath, err := parse.ArgVal[string](event.Args, "pathname")
+	loadedObjectPath, err := apiutils.GetStringArg(event, "pathname")
 	if err != nil {
 		return objInfo, errfmt.WrapError(err)
 	}
@@ -224,8 +225,8 @@ func getSharedObjectInfo(event trace.Event) (sharedobjs.ObjInfo, error) {
 			Inode:  loadedObjectInode,
 			Device: loadedObjectDevice,
 			Ctime:  loadedObjectCtime},
-		Path:    loadedObjectPath,
-		MountNS: event.MountNS,
+		Path: loadedObjectPath,
+		// MountNS: event.MountNS, don't think we have MountNs anymore
 	}
 
 	return objInfo, nil

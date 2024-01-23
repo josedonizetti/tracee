@@ -4,8 +4,7 @@ import (
 	"github.com/aquasecurity/tracee/pkg/containers"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 // ContainerRemove receives a containers.Containers object as a closure argument to track it's containers.
@@ -15,15 +14,20 @@ func ContainerRemove(cts *containers.Containers) DeriveFunction {
 }
 
 func deriveContainerRemoveArgs(cts *containers.Containers) deriveArgsFunction {
-	return func(event trace.Event) ([]interface{}, error) {
+	return func(event *types.Event) ([]interface{}, error) {
 		// if cgroup_id is from non default hid (v1 case), the cgroup info query will fail, so we skip
-		if check, err := isCgroupEventInHid(&event, cts); !check {
+		if check, err := isCgroupEventInHid(event, cts); !check {
 			return nil, errfmt.WrapError(err)
 		}
-		cgroupId, err := parse.ArgVal[uint64](event.Args, "cgroup_id")
-		if err != nil {
-			return nil, errfmt.WrapError(err)
+
+		var cgroupId uint64
+
+		for _, ev := range event.GetData() {
+			if ev.Name == "cgroup_id" {
+				cgroupId = ev.GetUInt64()
+			}
 		}
+
 		if info := cts.GetCgroupInfo(cgroupId); info.Container.ContainerId != "" {
 			return []interface{}{info.Runtime.String(), info.Container.ContainerId}, nil
 		}

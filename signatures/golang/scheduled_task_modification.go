@@ -5,10 +5,10 @@ import (
 	"path"
 	"strings"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type ScheduledTaskModification struct {
@@ -53,12 +53,12 @@ func (sig *ScheduledTaskModification) GetSelectedEvents() ([]detect.SignatureEve
 }
 
 func (sig *ScheduledTaskModification) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_file_open":
 		pathname, err := helpers.GetTraceeStringArgumentByName(eventObj, "pathname")
 		if err != nil {

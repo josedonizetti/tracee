@@ -1,8 +1,10 @@
 package ebpf
 
 import (
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/trace"
 )
@@ -22,6 +24,32 @@ func FindingToEvent(f *detect.Finding) (*trace.Event, error) {
 	}
 
 	return newEvent(int(eventDefID), f, s), nil
+}
+
+func FindingToEvent2(f *detect.Finding) (*types.Event, error) {
+	s, ok := f.Event.Payload.(trace.Event)
+
+	if !ok {
+		return nil, errfmt.Errorf("error converting finding to event: %s", f.SigMetadata.ID)
+	}
+
+	eventDefID, found := events.Core.GetDefinitionIDByName(f.SigMetadata.EventName)
+	if !found {
+		return nil, errfmt.Errorf("error finding event not found: %s", f.SigMetadata.EventName)
+	}
+
+	tmp0 := newEvent(int(eventDefID), f, s)
+	tmp, err := apiutils.ConvertTraceeEventToProto(*tmp0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.Event{
+		Event:                 tmp,
+		PoliciesVersion:       tmp0.PoliciesVersion,
+		MatchedPoliciesKernel: tmp0.MatchedPoliciesKernel,
+		MatchedPoliciesUser:   tmp0.MatchedPoliciesUser,
+	}, nil
 }
 
 func newEvent(id int, f *detect.Finding, e trace.Event) *trace.Event {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type K8SServiceAccountToken struct {
@@ -51,16 +51,16 @@ func (sig *K8SServiceAccountToken) GetSelectedEvents() ([]detect.SignatureEventS
 }
 
 func (sig *K8SServiceAccountToken) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_file_open":
 		// check process touching token is not on allow list
 		for _, legitProc := range sig.legitProcs {
-			if legitProc == eventObj.ProcessName {
+			if legitProc == eventObj.GetContext().GetProcess().GetThread().GetName() {
 				return nil
 			}
 		}

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
+
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 )
 
 // IsFileWrite returns whether the passed file permissions string contains
@@ -163,31 +165,28 @@ func GetPathFromRawAddr(addr map[string]string) (string, error) {
 // Network Protocol Event Types
 //
 
+// TODO: needs fixing
 // GetPacketMetadata converts json to PacketMetadata
-func GetPacketMetadata(
-	event trace.Event,
-	argName string) (
-	trace.PacketMetadata,
-	error) {
-	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
-	if err != nil {
-		return trace.PacketMetadata{}, err
-	}
+// func GetPacketMetadata(
+// 	event types.Event,
+// 	argName string) (
+// 	trace.PacketMetadata, // TODO: need fixing
+// 	error) {
+// 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
+// 	if err != nil {
+// 		return trace.PacketMetadata{}, err
+// 	}
 
-	argPacketMetadata, ok := arg.Value.(trace.PacketMetadata)
-	if ok {
-		return argPacketMetadata, nil
-	}
+// 	argPacketMetadata, ok := arg.Value.(trace.PacketMetadata)
+// 	if ok {
+// 		return argPacketMetadata, nil
+// 	}
 
-	return trace.PacketMetadata{}, fmt.Errorf("packet metadata: type error (should be trace.PacketMetadata, is %T)", arg.Value)
-}
+// 	return trace.PacketMetadata{}, fmt.Errorf("packet metadata: type error (should be trace.PacketMetadata, is %T)", arg.Value)
+// }
 
 // GetProtoIPv4ByName converts json to ProtoIPv4
-func GetProtoIPv4ByName(
-	event trace.Event,
-	argName string) (
-	trace.ProtoIPv4,
-	error) {
+func GetProtoIPv4ByName(event *types.Event, argName string) (*pb.IPv4, error) {
 	//
 	// Current ProtoIPv4 type considered:
 	//
@@ -209,23 +208,19 @@ func GetProtoIPv4ByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoIPv4{}, err
+		return nil, err
 	}
 
-	argProtoIPv4, ok := arg.Value.(trace.ProtoIPv4)
+	argProtoIPv4, ok := arg.Value.(*pb.EventValue_Ipv4)
 	if ok {
-		return argProtoIPv4, nil
+		return argProtoIPv4.Ipv4, nil
 	}
 
-	return trace.ProtoIPv4{}, fmt.Errorf("protocol IPv4: type error (should be trace.ProtoIPv4, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol IPv4: type error (should be trace.ProtoIPv4, is %T)", arg.Value)
 }
 
 // GetProtoIPv6ByName converts json to ProtoIPv6
-func GetProtoIPv6ByName(
-	event trace.Event,
-	argName string) (
-	trace.ProtoIPv6,
-	error) {
+func GetProtoIPv6ByName(event *types.Event, argName string) (*pb.IPv6, error) {
 	//
 	// Current ProtoIPv6 type considered:
 	//
@@ -242,21 +237,19 @@ func GetProtoIPv6ByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoIPv6{}, err
+		return nil, err
 	}
 
-	argProtoIPv6, ok := arg.Value.(trace.ProtoIPv6)
+	argProtoIPv6, ok := arg.Value.(*pb.EventValue_Ipv6)
 	if ok {
-		return argProtoIPv6, nil
+		return argProtoIPv6.Ipv6, nil
 	}
 
-	return trace.ProtoIPv6{}, fmt.Errorf("protocol IPv6: type error (should be trace.ProtoIPv6, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol IPv6: type error (should be trace.ProtoIPv6, is %T)", arg.Value)
 }
 
 // GetProtoUDPByName converts json to ProtoUDP
-func GetProtoUDPByName(
-	event trace.Event, argName string) (
-	trace.ProtoUDP, error) {
+func GetProtoUDPByName(event *types.Event, argName string) (*pb.UDP, error) {
 	//
 	// Current ProtoUDP type considered:
 	//
@@ -269,21 +262,19 @@ func GetProtoUDPByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoUDP{}, err
+		return nil, err
 	}
 
-	argProtoUDP, ok := arg.Value.(trace.ProtoUDP)
+	argProtoUDP, ok := arg.Value.(*pb.EventValue_Udp)
 	if ok {
-		return argProtoUDP, nil
+		return argProtoUDP.Udp, nil
 	}
 
-	return trace.ProtoUDP{}, fmt.Errorf("protocol UDP: type error (should be trace.ProtoUDP, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol UDP: type error (should be trace.ProtoUDP, is %T)", arg.Value)
 }
 
 // GetProtoTCPByName converts json to ProtoTCP
-func GetProtoTCPByName(
-	event trace.Event, argName string) (
-	trace.ProtoTCP, error) {
+func GetProtoTCPByName(event *types.Event, argName string) (*pb.TCP, error) {
 	//
 	// Current ProtoTCP type considered:
 	//
@@ -309,21 +300,19 @@ func GetProtoTCPByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoTCP{}, err
+		return nil, err
 	}
 
-	argProtoTCP, ok := arg.Value.(trace.ProtoTCP)
+	argProtoTCP, ok := arg.Value.(*pb.EventValue_Tcp)
 	if ok {
-		return argProtoTCP, nil
+		return argProtoTCP.Tcp, nil
 	}
 
-	return trace.ProtoTCP{}, fmt.Errorf("protocol TCP: type error (should be trace.ProtoTCP, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol TCP: type error (should be trace.ProtoTCP, is %T)", arg.Value)
 }
 
 // GetProtoICMPByName converts json to ProtoICMP
-func GetProtoICMPByName(
-	event trace.Event, argName string) (
-	trace.ProtoICMP, error) {
+func GetProtoICMPByName(event *types.Event, argName string) (*pb.ICMP, error) {
 	//
 	// Current ProtoICMP type considered:
 	//
@@ -336,23 +325,19 @@ func GetProtoICMPByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoICMP{}, err
+		return nil, err
 	}
 
-	argProtoICMP, ok := arg.Value.(trace.ProtoICMP)
+	argProtoICMP, ok := arg.Value.(*pb.EventValue_Icmp)
 	if ok {
-		return argProtoICMP, nil
+		return argProtoICMP.Icmp, nil
 	}
 
-	return trace.ProtoICMP{}, fmt.Errorf("protocol ICMP: type error (should be trace.ProtoICMP, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol ICMP: type error (should be trace.ProtoICMP, is %T)", arg.Value)
 }
 
 // GetProtoICMPv6ByName converts json to ProtoICMPv6
-func GetProtoICMPv6ByName(
-	event trace.Event,
-	argName string) (
-	trace.ProtoICMPv6,
-	error) {
+func GetProtoICMPv6ByName(event *types.Event, argName string) (*pb.ICMPv6, error) {
 	//
 	// Current ProtoICMPv6 type considered:
 	//
@@ -363,24 +348,19 @@ func GetProtoICMPv6ByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoICMPv6{}, err
+		return nil, err
 	}
 
-	argProtoICMPv6, ok := arg.Value.(trace.ProtoICMPv6)
+	argProtoICMPv6, ok := arg.Value.(*pb.EventValue_Icmpv6)
 	if ok {
-		return argProtoICMPv6, nil
+		return argProtoICMPv6.Icmpv6, nil
 	}
 
-	return trace.ProtoICMPv6{}, fmt.Errorf("protocol ICMPv6: type error (should be trace.ProtoICMPv6, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol ICMPv6: type error (should be trace.ProtoICMPv6, is %T)", arg.Value)
 }
 
 // GetProtoDNSByName converts json to ProtoDNS
-func GetProtoDNSByName(
-	event trace.Event,
-	argName string,
-) (
-	trace.ProtoDNS, error,
-) {
+func GetProtoDNSByName(event *types.Event, argName string) (*pb.DNS, error) {
 	//
 	// Current ProtoDNS type considered:
 	//
@@ -406,32 +386,27 @@ func GetProtoDNSByName(
 
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoDNS{}, err
+		return nil, err
 	}
 
-	argProtoDNS, ok := arg.Value.(trace.ProtoDNS)
+	argProtoDNS, ok := arg.Value.(*pb.EventValue_Dns)
 	if ok {
-		return argProtoDNS, nil
+		return argProtoDNS.Dns, nil
 	}
 
-	return trace.ProtoDNS{}, fmt.Errorf("protocol DNS: type error (should be trace.ProtoDNS, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol DNS: type error (should be trace.ProtoDNS, is %T)", arg.Value)
 }
 
-func GetProtoHTTPByName(
-	event trace.Event,
-	argName string,
-) (
-	trace.ProtoHTTP, error,
-) {
+func GetProtoHTTPByName(event *types.Event, argName string) (*pb.HTTP, error) {
 	arg, err := GetTraceeArgumentByName(event, argName, GetArgOps{DefaultArgs: false})
 	if err != nil {
-		return trace.ProtoHTTP{}, err
+		return nil, err
 	}
 
-	argProtoHTTP, ok := arg.Value.(trace.ProtoHTTP)
+	argProtoHTTP, ok := arg.Value.(*pb.EventValue_Http)
 	if ok {
-		return argProtoHTTP, nil
+		return argProtoHTTP.Http, nil
 	}
 
-	return trace.ProtoHTTP{}, fmt.Errorf("protocol HTTP: type error (should be trace.ProtoHTTP, is %T)", arg.Value)
+	return nil, fmt.Errorf("protocol HTTP: type error (should be trace.ProtoHTTP, is %T)", arg.Value)
 }

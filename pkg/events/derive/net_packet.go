@@ -1,9 +1,11 @@
 package derive
 
 import (
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/trace"
 )
 
@@ -13,12 +15,12 @@ import (
 
 func NetPacketIPv4() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketIPv4,
-		func(event trace.Event) ([]interface{}, error) {
-			layer3TypeFlag, _ := getLayer3TypeFlagFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			layer3TypeFlag, _ := getLayer3TypeFlagFromEvent(event)
 			if layer3TypeFlag != familyIPv4 {
 				return nil, nil // no event if not IPv4
 			}
-			packet, err := createPacketFromEvent(&event)
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -30,7 +32,7 @@ func NetPacketIPv4() DeriveFunction {
 				layer3IP.SrcIP.String(),
 				layer3IP.DstIP.String(),
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoIPv4(layer3IP),
 			}, nil
@@ -40,12 +42,12 @@ func NetPacketIPv4() DeriveFunction {
 
 func NetPacketIPv6() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketIPv6,
-		func(event trace.Event) ([]interface{}, error) {
-			layer3TypeFlag, _ := getLayer3TypeFlagFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			layer3TypeFlag, _ := getLayer3TypeFlagFromEvent(event)
 			if layer3TypeFlag != familyIPv6 {
 				return nil, nil // no event if not IPv6
 			}
-			packet, err := createPacketFromEvent(&event)
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -57,7 +59,7 @@ func NetPacketIPv6() DeriveFunction {
 				layer3IP.SrcIP.String(),
 				layer3IP.DstIP.String(),
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoIPv6(layer3IP),
 			}, nil
@@ -71,8 +73,8 @@ func NetPacketIPv6() DeriveFunction {
 
 func NetPacketTCP() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketTCP,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +92,7 @@ func NetPacketTCP() DeriveFunction {
 				layer4TCP.SrcPort,
 				layer4TCP.DstPort,
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoTCP(layer4TCP),
 			}, nil
@@ -100,8 +102,8 @@ func NetPacketTCP() DeriveFunction {
 
 func NetPacketUDP() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketUDP,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -119,7 +121,7 @@ func NetPacketUDP() DeriveFunction {
 				layer4UDP.SrcPort,
 				layer4UDP.DstPort,
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoUDP(layer4UDP),
 			}, nil
@@ -133,8 +135,8 @@ func NetPacketUDP() DeriveFunction {
 
 func NetPacketICMP() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketICMP,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -150,7 +152,7 @@ func NetPacketICMP() DeriveFunction {
 				layer3IP.SrcIP.String(),
 				layer3IP.DstIP.String(),
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoICMP(layerICMP),
 			}, nil
@@ -160,8 +162,8 @@ func NetPacketICMP() DeriveFunction {
 
 func NetPacketICMPv6() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketICMPv6,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -177,7 +179,7 @@ func NetPacketICMPv6() DeriveFunction {
 				layer3IP.SrcIP.String(),
 				layer3IP.DstIP.String(),
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoICMPv6(layerICMPv6),
 			}, nil
@@ -191,8 +193,8 @@ func NetPacketICMPv6() DeriveFunction {
 
 func NetPacketDNS() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketDNS,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -214,7 +216,7 @@ func NetPacketDNS() DeriveFunction {
 				srcPort,
 				dstPort,
 				trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				getProtoDNS(layer7DNS),
 			}, nil
@@ -224,8 +226,8 @@ func NetPacketDNS() DeriveFunction {
 
 func NetPacketDNSRequest() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketDNSRequest,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -256,12 +258,12 @@ func NetPacketDNSRequest() DeriveFunction {
 			// Convert NetPacketDNS to old DNS Request event
 
 			dns := getProtoDNS(layer7DNS)
-			if dns.QR != 0 {
+			if dns.Qr != 0 {
 				return nil, nil // not a DNS request
 			}
 
 			requests := getDNSQueryFromProtoDNS(dns.Questions)
-			if len(requests) != 1 || len(requests) != int(dns.QDCount) {
+			if len(requests) != 1 || len(requests) != int(dns.QdCount) {
 				logger.Debugw("bad number of requests found")
 				return nil, nil
 			}
@@ -276,8 +278,8 @@ func NetPacketDNSRequest() DeriveFunction {
 
 func NetPacketDNSResponse() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketDNSResponse,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -308,7 +310,7 @@ func NetPacketDNSResponse() DeriveFunction {
 			// Convert NetPacketDNS to old DNS Response event
 
 			dns := getProtoDNS(layer7DNS)
-			if dns.QR != 1 {
+			if dns.Qr != 1 {
 				return nil, nil // not a DNS response
 			}
 
@@ -318,7 +320,7 @@ func NetPacketDNSResponse() DeriveFunction {
 				return nil, nil
 			}
 			responses := getDNSResponseFromProtoDNS(requests[0], dns.Answers)
-			if len(responses[0].DnsAnswer) != int(dns.ANCount) {
+			if len(responses[0].DnsAnswer) != int(dns.AnCount) {
 				logger.Debugw("Could not get all DNS responses")
 				return nil, nil
 			}
@@ -333,8 +335,8 @@ func NetPacketDNSResponse() DeriveFunction {
 
 func NetPacketHTTP() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketHTTP,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -346,8 +348,8 @@ func NetPacketHTTP() DeriveFunction {
 			if err != nil {
 				return nil, err
 			}
-			var proto *trace.ProtoHTTP
-			switch getPacketHTTPDirection(&event) {
+			var proto *pb.HTTP
+			switch getPacketHTTPDirection(event) {
 			case protoHTTPRequest:
 				proto, err = getProtoHTTPFromRequestPacket(packet)
 				if err != nil {
@@ -372,7 +374,7 @@ func NetPacketHTTP() DeriveFunction {
 				srcPort,
 				dstPort,
 				&trace.PacketMetadata{
-					Direction: getPacketDirection(&event),
+					Direction: getPacketDirection(event),
 				},
 				*proto,
 			}, nil
@@ -382,8 +384,8 @@ func NetPacketHTTP() DeriveFunction {
 
 func NetPacketHTTPRequest() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketHTTPRequest,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -395,7 +397,7 @@ func NetPacketHTTPRequest() DeriveFunction {
 			if err != nil {
 				return nil, err
 			}
-			if getPacketHTTPDirection(&event) != protoHTTPRequest {
+			if getPacketHTTPDirection(event) != protoHTTPRequest {
 				return nil, nil
 			}
 			protoHTTP, err := getProtoHTTPFromRequestPacket(packet)
@@ -428,8 +430,8 @@ func NetPacketHTTPRequest() DeriveFunction {
 
 func NetPacketHTTPResponse() DeriveFunction {
 	return deriveSingleEvent(events.NetPacketHTTPResponse,
-		func(event trace.Event) ([]interface{}, error) {
-			packet, err := createPacketFromEvent(&event)
+		func(event *types.Event) ([]interface{}, error) {
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -441,7 +443,7 @@ func NetPacketHTTPResponse() DeriveFunction {
 			if err != nil {
 				return nil, err
 			}
-			if getPacketHTTPDirection(&event) != protoHTTPResponse {
+			if getPacketHTTPDirection(event) != protoHTTPResponse {
 				return nil, nil
 			}
 			protoHTTP, err := getProtoHTTPFromResponsePacket(packet)

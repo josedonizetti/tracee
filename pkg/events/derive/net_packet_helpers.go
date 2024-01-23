@@ -11,9 +11,10 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/dnscache"
-	"github.com/aquasecurity/tracee/pkg/events"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/types/trace"
 )
 
@@ -81,31 +82,37 @@ func strToLower(given string) string {
 }
 
 // parsePayloadArg returns the packet payload from the event.
-func parsePayloadArg(event *trace.Event) ([]byte, error) {
-	payloadArg := events.GetArg(event, "payload")
+func parsePayloadArg(event *types.Event) ([]byte, error) {
+	var payloadArg *pb.EventValue
+	for _, ev := range event.GetData() {
+		if ev.Name == "payload" {
+			payloadArg = ev
+		}
+	}
+
 	if payloadArg == nil {
 		return nil, noPayloadError()
 	}
-	payload, ok := payloadArg.Value.([]byte)
+	payload, ok := payloadArg.Value.(*pb.EventValue_Bytes)
 	if !ok {
 		return nil, nonByteArgError()
 	}
-	payloadSize := len(payload)
+	payloadSize := len(payload.Bytes)
 	if payloadSize < 1 {
 		return nil, emptyPayloadError()
 	}
-	return payload, nil
+	return payload.Bytes, nil
 }
 
 // getNetPair returns the network pair from the event.
 // TODO: convert to trace.packetMetadata{}
-func getPktMeta(srcIP, dstIP net.IP, srcPort, dstPort uint16, proto uint8, length uint32) trace.PktMeta {
-	return trace.PktMeta{
-		SrcIP:     srcIP.String(),
-		DstIP:     dstIP.String(),
-		SrcPort:   srcPort,
-		DstPort:   dstPort,
-		Protocol:  proto,
+func getPktMeta(srcIP, dstIP net.IP, srcPort, dstPort uint16, proto uint8, length uint32) *pb.PktMeta {
+	return &pb.PktMeta{
+		SrcIp:     srcIP.String(),
+		DstIp:     dstIP.String(),
+		SrcPort:   uint32(srcPort),
+		DstPort:   uint32(dstPort),
+		Protocol:  uint32(proto),
 		PacketLen: length,
 		Iface:     "any", // TODO: pick iface index from the kernel ?
 	}
@@ -116,30 +123,50 @@ func swapSrcDst(s, d net.IP, sp, dp uint16) (net.IP, net.IP, uint16, uint16) {
 	return d, s, dp, sp
 }
 
+// josedonizetti: fix me
+// THIS is a tricy one, as we don't support on grpc
 // getPacketDirection returns the packet direction from the event.
-func getPacketDirection(event *trace.Event) trace.PacketDirection {
+func getPacketDirection(event *types.Event) trace.PacketDirection {
+	var returnValue int
+
+	for _, ev := range event.GetData() {
+		if ev.Name == "returnValue" {
+			returnValue = int(ev.GetInt64())
+			break
+		}
+	}
+
 	switch {
-	case event.ReturnValue&packetIngress == packetIngress:
+	case returnValue&packetIngress == packetIngress:
 		return trace.PacketIngress
-	case event.ReturnValue&packetEgress == packetEgress:
+	case returnValue&packetEgress == packetEgress:
 		return trace.PacketEgress
 	}
 	return trace.InvalidPacketDirection
 }
 
 // getPacketHTTPDirection returns the packet HTTP direction from the event.
-func getPacketHTTPDirection(event *trace.Event) int {
+func getPacketHTTPDirection(event *types.Event) int {
+	var returnValue int
+
+	for _, ev := range event.GetData() {
+		if ev.Name == "returnValue" {
+			returnValue = int(ev.GetInt64())
+			break
+		}
+	}
+
 	switch {
-	case event.ReturnValue&protoHTTPRequest == protoHTTPRequest:
+	case returnValue&protoHTTPRequest == protoHTTPRequest:
 		return protoHTTPRequest
-	case event.ReturnValue&protoHTTPResponse == protoHTTPResponse:
+	case returnValue&protoHTTPResponse == protoHTTPResponse:
 		return protoHTTPResponse
 	}
 	return 0
 }
 
 // createPacketFromEvent creates a gopacket.Packet from the event.
-func createPacketFromEvent(event *trace.Event) (gopacket.Packet, error) {
+func createPacketFromEvent(event *types.Event) (gopacket.Packet, error) {
 	payload, err := parsePayloadArg(event)
 	if err != nil {
 		return nil, err
@@ -259,11 +286,20 @@ func getLayer3TypeFromFlag(layer3TypeFlag int) (gopacket.LayerType, error) {
 }
 
 // getLayer3TypeFlagFromEvent returns the layer 3 protocol type from a given event.
-func getLayer3TypeFlagFromEvent(event *trace.Event) (int, error) {
+func getLayer3TypeFlagFromEvent(event *types.Event) (int, error) {
+
+	var returnValue int
+	for _, ev := range event.GetData() {
+		if ev.Name == "returnValue" {
+			returnValue = int(ev.GetInt64())
+			break
+		}
+	}
+
 	switch {
-	case event.ReturnValue&familyIPv4 == familyIPv4:
+	case returnValue&familyIPv4 == familyIPv4:
 		return familyIPv4, nil
-	case event.ReturnValue&familyIPv6 == familyIPv6:
+	case returnValue&familyIPv6 == familyIPv6:
 		return familyIPv6, nil
 	}
 	return 0, fmt.Errorf("wrong layer 3 ret value flag")
@@ -418,112 +454,112 @@ func getLayer7FromPacket(packet gopacket.Packet) (gopacket.ApplicationLayer, err
 //
 
 // getProtoIPv4 returns the ProtoIPv4 from the IPv4.
-func getProtoIPv4(ipv4 *layers.IPv4) trace.ProtoIPv4 {
+func getProtoIPv4(ipv4 *layers.IPv4) *pb.IPv4 {
 	// TODO: IPv4 options if IHL > 5
-	return trace.ProtoIPv4{
-		Version:    ipv4.Version,
-		IHL:        ipv4.IHL,
-		TOS:        ipv4.TOS,
-		Length:     ipv4.Length,
-		Id:         ipv4.Id,
-		Flags:      uint8(ipv4.Flags),
-		FragOffset: ipv4.FragOffset,
-		TTL:        ipv4.TTL,
+	return &pb.IPv4{
+		Version:    uint32(ipv4.Version),
+		Ihl:        uint32(ipv4.IHL),
+		Tos:        uint32(ipv4.TOS),
+		Length:     uint32(ipv4.Length),
+		Id:         uint32(ipv4.Id),
+		Flags:      uint32(ipv4.Flags),
+		FragOffset: uint32(ipv4.FragOffset),
+		Ttl:        uint32(ipv4.TTL),
 		Protocol:   ipv4.Protocol.String(),
-		Checksum:   ipv4.Checksum,
-		SrcIP:      ipv4.SrcIP.String(),
-		DstIP:      ipv4.DstIP.String(),
+		Checksum:   uint32(ipv4.Checksum),
+		SrcIp:      ipv4.SrcIP.String(),
+		DstIp:      ipv4.DstIP.String(),
 	}
 }
 
 // getProtoIPv6 returns the ProtoIPv6 from the IPv6.
-func getProtoIPv6(ipv6 *layers.IPv6) trace.ProtoIPv6 {
-	return trace.ProtoIPv6{
-		Version:      ipv6.Version,
-		TrafficClass: ipv6.TrafficClass,
+func getProtoIPv6(ipv6 *layers.IPv6) *pb.IPv6 {
+	return &pb.IPv6{
+		Version:      uint32(ipv6.Version),
+		TrafficClass: uint32(ipv6.TrafficClass),
 		FlowLabel:    ipv6.FlowLabel,
-		Length:       ipv6.Length,
+		Length:       uint32(ipv6.Length),
 		NextHeader:   ipv6.NextHeader.String(),
-		HopLimit:     ipv6.HopLimit,
-		SrcIP:        ipv6.SrcIP.String(),
-		DstIP:        ipv6.DstIP.String(),
+		HopLimit:     uint32(ipv6.HopLimit),
+		SrcIp:        ipv6.SrcIP.String(),
+		DstIp:        ipv6.DstIP.String(),
 	}
 }
 
 // getProtoTCP returns the ProtoTCP from the TCP.
-func getProtoTCP(tcp *layers.TCP) trace.ProtoTCP {
-	return trace.ProtoTCP{
-		SrcPort:    uint16(tcp.SrcPort),
-		DstPort:    uint16(tcp.DstPort),
+func getProtoTCP(tcp *layers.TCP) *pb.TCP {
+	return &pb.TCP{
+		SrcPort:    uint32(tcp.SrcPort),
+		DstPort:    uint32(tcp.DstPort),
 		Seq:        tcp.Seq,
 		Ack:        tcp.Ack,
-		DataOffset: tcp.DataOffset,
-		FIN:        boolToUint8(tcp.FIN),
-		SYN:        boolToUint8(tcp.SYN),
-		RST:        boolToUint8(tcp.RST),
-		PSH:        boolToUint8(tcp.PSH),
-		ACK:        boolToUint8(tcp.ACK),
-		URG:        boolToUint8(tcp.URG),
-		ECE:        boolToUint8(tcp.ECE),
-		NS:         boolToUint8(tcp.NS),
-		Window:     tcp.Window,
-		Checksum:   tcp.Checksum,
-		Urgent:     tcp.Urgent,
+		DataOffset: uint32(tcp.DataOffset),
+		FinFlag:    uint32(boolToUint8(tcp.FIN)),
+		SynFlag:    uint32(boolToUint8(tcp.SYN)),
+		RstFlag:    uint32(boolToUint8(tcp.RST)),
+		PshFlag:    uint32(boolToUint8(tcp.PSH)),
+		AckFlag:    uint32(boolToUint8(tcp.ACK)),
+		UrgFlag:    uint32(boolToUint8(tcp.URG)),
+		EceFlag:    uint32(boolToUint8(tcp.ECE)),
+		NsFlag:     uint32(boolToUint8(tcp.NS)),
+		Window:     uint32(tcp.Window),
+		Checksum:   uint32(tcp.Checksum),
+		Urgent:     uint32(tcp.Urgent),
 		// TODO: TCP options
 	}
 }
 
 // getProtoUDP returns the ProtoUDP from the UDP.
-func getProtoUDP(udp *layers.UDP) trace.ProtoUDP {
-	return trace.ProtoUDP{
-		SrcPort:  uint16(udp.SrcPort),
-		DstPort:  uint16(udp.DstPort),
-		Length:   udp.Length,
-		Checksum: udp.Checksum,
+func getProtoUDP(udp *layers.UDP) *pb.UDP {
+	return &pb.UDP{
+		SrcPort:  uint32(udp.SrcPort),
+		DstPort:  uint32(udp.DstPort),
+		Length:   uint32(udp.Length),
+		Checksum: uint32(udp.Checksum),
 	}
 }
 
 // getProtoICMP returns the ProtoICMP from the ICMP.
-func getProtoICMP(icmp *layers.ICMPv4) trace.ProtoICMP {
-	return trace.ProtoICMP{
+func getProtoICMP(icmp *layers.ICMPv4) *pb.ICMP {
+	return &pb.ICMP{
 		TypeCode: icmp.TypeCode.String(),
-		Checksum: icmp.Checksum,
-		Id:       icmp.Id,
-		Seq:      icmp.Seq,
+		Checksum: uint32(icmp.Checksum),
+		Id:       uint32(icmp.Id),
+		Seq:      uint32(icmp.Seq),
 	}
 }
 
 // getProtoICMPv6 returns the ProtoICMPv6 from the ICMPv6.
-func getProtoICMPv6(icmpv6 *layers.ICMPv6) trace.ProtoICMPv6 {
-	return trace.ProtoICMPv6{
+func getProtoICMPv6(icmpv6 *layers.ICMPv6) *pb.ICMPv6 {
+	return &pb.ICMPv6{
 		TypeCode: icmpv6.TypeCode.String(),
-		Checksum: icmpv6.Checksum,
+		Checksum: uint32(icmpv6.Checksum),
 	}
 }
 
 // getProtoDNS returns the ProtoDNS from the DNS.
-func getProtoDNS(dns *layers.DNS) trace.ProtoDNS {
-	proto := trace.ProtoDNS{
-		ID:           dns.ID,
-		QR:           boolToUint8(dns.QR),
+func getProtoDNS(dns *layers.DNS) *pb.DNS {
+	proto := &pb.DNS{
+		Id:           uint32(dns.ID),
+		Qr:           uint32(boolToUint8(dns.QR)),
 		OpCode:       strToLower(dns.OpCode.String()),
-		AA:           boolToUint8(dns.AA),
-		TC:           boolToUint8(dns.TC),
-		RD:           boolToUint8(dns.RD),
-		RA:           boolToUint8(dns.RA),
-		Z:            dns.Z,
+		Aa:           uint32(boolToUint8(dns.AA)),
+		Tc:           uint32(boolToUint8(dns.TC)),
+		Rd:           uint32(boolToUint8(dns.RD)),
+		Ra:           uint32(boolToUint8(dns.RA)),
+		Z:            uint32(dns.Z),
 		ResponseCode: strToLower(dns.ResponseCode.String()),
-		QDCount:      dns.QDCount,
-		ANCount:      dns.ANCount,
-		NSCount:      dns.NSCount,
-		ARCount:      dns.ARCount,
+		QdCount:      uint32(dns.QDCount),
+		AnCount:      uint32(dns.ANCount),
+		NsCount:      uint32(dns.NSCount),
+		ArCount:      uint32(dns.ARCount),
 	}
 
 	// Process all existing questions (if any).
-	proto.Questions = make([]trace.ProtoDNSQuestion, 0, len(dns.Questions))
-	proto.Answers = make([]trace.ProtoDNSResourceRecord, 0, len(dns.Answers))
-	proto.Authorities = make([]trace.ProtoDNSResourceRecord, 0, len(dns.Authorities))
-	proto.Additionals = make([]trace.ProtoDNSResourceRecord, 0, len(dns.Additionals))
+	proto.Questions = make([]*pb.DNSQuestion, 0, len(dns.Questions))
+	proto.Answers = make([]*pb.DNSResourceRecord, 0, len(dns.Answers))
+	proto.Authorities = make([]*pb.DNSResourceRecord, 0, len(dns.Authorities))
+	proto.Additionals = make([]*pb.DNSResourceRecord, 0, len(dns.Additionals))
 
 	for _, question := range dns.Questions {
 		proto.Questions = append(proto.Questions, getProtoDNSQuestion(question))
@@ -545,8 +581,8 @@ func getProtoDNS(dns *layers.DNS) trace.ProtoDNS {
 }
 
 // getProtoDNSQuestion returns the ProtoDNSQuestion from the DNSQuestion.
-func getProtoDNSQuestion(question layers.DNSQuestion) trace.ProtoDNSQuestion {
-	return trace.ProtoDNSQuestion{
+func getProtoDNSQuestion(question layers.DNSQuestion) *pb.DNSQuestion {
+	return &pb.DNSQuestion{
 		Name:  string(question.Name),
 		Type:  question.Type.String(),
 		Class: question.Class.String(),
@@ -554,59 +590,59 @@ func getProtoDNSQuestion(question layers.DNSQuestion) trace.ProtoDNSQuestion {
 }
 
 // getProtoDNSResourceRecord returns the ProtoDNSResourceRecord from the DNSResourceRecord.
-func getProtoDNSResourceRecord(record layers.DNSResourceRecord) trace.ProtoDNSResourceRecord {
+func getProtoDNSResourceRecord(record layers.DNSResourceRecord) *pb.DNSResourceRecord {
 	var ip string
 
 	if record.IP != nil {
 		ip = record.IP.String()
 	}
 
-	return trace.ProtoDNSResourceRecord{
+	return &pb.DNSResourceRecord{
 		Name:  string(record.Name),
 		Type:  record.Type.String(),
 		Class: record.Class.String(),
-		TTL:   record.TTL,
-		IP:    ip,
-		NS:    string(record.NS),
-		CNAME: string(record.CNAME),
-		PTR:   string(record.PTR),
-		TXTs:  convertArrayOfBytes(record.TXTs),
-		SOA: trace.ProtoDNSSOA{
-			MName:   string(record.SOA.MName),
-			RName:   string(record.SOA.RName),
+		Ttl:   record.TTL,
+		Ip:    ip,
+		Ns:    string(record.NS),
+		Cname: string(record.CNAME),
+		Ptr:   string(record.PTR),
+		Txts:  convertArrayOfBytes(record.TXTs),
+		Soa: &pb.DNSSOA{
+			Mname:   string(record.SOA.MName),
+			Rname:   string(record.SOA.RName),
 			Serial:  record.SOA.Serial,
 			Refresh: record.SOA.Refresh,
 			Retry:   record.SOA.Retry,
 			Expire:  record.SOA.Expire,
 			Minimum: record.SOA.Minimum,
 		},
-		SRV: trace.ProtoDNSSRV{
-			Priority: record.SRV.Priority,
-			Weight:   record.SRV.Weight,
-			Port:     record.SRV.Port,
+		Srv: &pb.DNSSRV{
+			Priority: uint32(record.SRV.Priority),
+			Weight:   uint32(record.SRV.Weight),
+			Port:     uint32(record.SRV.Port),
 			Name:     string(record.SRV.Name),
 		},
-		MX: trace.ProtoDNSMX{
-			Preference: record.MX.Preference,
+		Mx: &pb.DNSMX{
+			Preference: uint32(record.MX.Preference),
 			Name:       string(record.MX.Name),
 		},
-		OPT: getDNSOPT(record.OPT),
-		URI: trace.ProtoDNSURI{
-			Priority: record.URI.Priority,
-			Weight:   record.URI.Weight,
+		Opt: getDNSOPT(record.OPT),
+		Uri: &pb.DNSURI{
+			Priority: uint32(record.URI.Priority),
+			Weight:   uint32(record.URI.Weight),
 			Target:   string(record.URI.Target),
 		},
-		TXT: string(record.TXT),
+		Txt: string(record.TXT),
 	}
 }
 
 // getDNSOPT returns the ProtoDNSOPT from the DNSOPT.
-func getDNSOPT(opt []layers.DNSOPT) []trace.ProtoDNSOPT {
-	res := make([]trace.ProtoDNSOPT, 0, len(opt))
+func getDNSOPT(opt []layers.DNSOPT) []*pb.DNSOPT {
+	res := make([]*pb.DNSOPT, 0, len(opt))
 
 	for _, j := range opt {
 		res = append(res,
-			trace.ProtoDNSOPT{
+			&pb.DNSOPT{
 				Code: j.Code.String(),
 				Data: string(j.Data),
 			},
@@ -617,7 +653,7 @@ func getDNSOPT(opt []layers.DNSOPT) []trace.ProtoDNSOPT {
 }
 
 // getProtoHTTPFromRequestPacket returns the ProtoHTTP from the HTTP request packet.
-func getProtoHTTPFromRequestPacket(packet gopacket.Packet) (*trace.ProtoHTTP, error) {
+func getProtoHTTPFromRequestPacket(packet gopacket.Packet) (*pb.HTTP, error) {
 	layer7, err := getLayer7FromPacket(packet)
 	if err != nil {
 		return nil, err
@@ -636,19 +672,19 @@ func getProtoHTTPFromRequestPacket(packet gopacket.Packet) (*trace.ProtoHTTP, er
 		return nil, err
 	}
 
-	return &trace.ProtoHTTP{
+	return &pb.HTTP{
 		Direction:     "request",
 		Method:        request.Method,
 		Protocol:      request.Proto,
 		Host:          request.Host,
-		URIPath:       request.URL.Path,
-		Headers:       request.Header,
+		UriPath:       request.URL.Path,
+		Headers:       getHeaders(request.Header),
 		ContentLength: request.ContentLength,
 	}, nil
 }
 
 // getProtoHTTPFromResponsePacket returns the ProtoHTTP from the HTTP response packet.
-func getProtoHTTPFromResponsePacket(packet gopacket.Packet) (*trace.ProtoHTTP, error) {
+func getProtoHTTPFromResponsePacket(packet gopacket.Packet) (*pb.HTTP, error) {
 	layer7, err := getLayer7FromPacket(packet)
 	if err != nil {
 		return nil, err
@@ -667,31 +703,31 @@ func getProtoHTTPFromResponsePacket(packet gopacket.Packet) (*trace.ProtoHTTP, e
 		return nil, err
 	}
 
-	return &trace.ProtoHTTP{
+	return &pb.HTTP{
 		Direction:     "response",
 		Status:        response.Status,
-		StatusCode:    response.StatusCode,
+		StatusCode:    int32(response.StatusCode),
 		Protocol:      response.Proto,
-		Headers:       response.Header,
+		Headers:       getHeaders(response.Header),
 		ContentLength: response.ContentLength,
 	}, nil
 }
 
 // getProtoHTTPRequestFromHTTP returns the ProtoHTTPRequest from the ProtoHTTP.
-func getProtoHTTPRequestFromHTTP(proto *trace.ProtoHTTP) trace.ProtoHTTPRequest {
-	return trace.ProtoHTTPRequest{
+func getProtoHTTPRequestFromHTTP(proto *pb.HTTP) *pb.HTTPRequest {
+	return &pb.HTTPRequest{
 		Method:        proto.Method,
 		Protocol:      proto.Protocol,
 		Host:          proto.Host,
-		URIPath:       proto.URIPath,
+		UriPath:       proto.UriPath,
 		Headers:       proto.Headers,
 		ContentLength: proto.ContentLength,
 	}
 }
 
 // getProtoHTTPResponseFromHTTP returns the ProtoHTTPResponse from the ProtoHTTP.
-func getProtoHTTPResponseFromHTTP(proto *trace.ProtoHTTP) trace.ProtoHTTPResponse {
-	return trace.ProtoHTTPResponse{
+func getProtoHTTPResponseFromHTTP(proto *pb.HTTP) *pb.HTTPResponse {
+	return &pb.HTTPResponse{
 		Status:        proto.Status,
 		StatusCode:    proto.StatusCode,
 		Protocol:      proto.Protocol,
@@ -701,12 +737,12 @@ func getProtoHTTPResponseFromHTTP(proto *trace.ProtoHTTP) trace.ProtoHTTPRespons
 }
 
 // getDNSQueryFromProtoDNS converts a NetPacketDNS to a DnsQueryData.
-func getDNSQueryFromProtoDNS(questions []trace.ProtoDNSQuestion) []trace.DnsQueryData {
-	requests := make([]trace.DnsQueryData, 0, len(questions))
+func getDNSQueryFromProtoDNS(questions []*pb.DNSQuestion) []*pb.DnsQueryData {
+	requests := make([]*pb.DnsQueryData, 0, len(questions))
 
 	for _, question := range questions {
 		requests = append(requests,
-			trace.DnsQueryData{
+			&pb.DnsQueryData{
 				Query:      question.Name,
 				QueryType:  question.Type,
 				QueryClass: question.Class,
@@ -718,41 +754,54 @@ func getDNSQueryFromProtoDNS(questions []trace.ProtoDNSQuestion) []trace.DnsQuer
 }
 
 // getDNSResponseFromProtoDNS converts a NetPacketDNS to a DnsResponseData.
-func getDNSResponseFromProtoDNS(query trace.DnsQueryData, answers []trace.ProtoDNSResourceRecord) []trace.DnsResponseData {
-	dnsAnswers := make([]trace.DnsAnswer, 0, len(answers))
+func getDNSResponseFromProtoDNS(query *pb.DnsQueryData, answers []*pb.DNSResourceRecord) []*pb.DnsResponseData {
+	dnsAnswers := make([]*pb.DnsAnswer, 0, len(answers))
 
 	for _, answer := range answers {
-		var dnsAnswer trace.DnsAnswer
+		dnsAnswer := &pb.DnsAnswer{}
 
 		switch answer.Type {
 		case "A":
-			dnsAnswer.Answer = answer.IP
+			dnsAnswer.Answer = answer.Ip
 		case "AAAA":
-			dnsAnswer.Answer = answer.IP
+			dnsAnswer.Answer = answer.Ip
 		case "NS":
-			dnsAnswer.Answer = answer.NS
+			dnsAnswer.Answer = answer.Ns
 		case "CNAME":
-			dnsAnswer.Answer = answer.CNAME
+			dnsAnswer.Answer = answer.Cname
 		case "PTR":
-			dnsAnswer.Answer = answer.PTR
+			dnsAnswer.Answer = answer.Ptr
 		case "MX":
-			dnsAnswer.Answer = answer.MX.Name
+			dnsAnswer.Answer = answer.Mx.GetName()
 		case "TXT":
-			dnsAnswer.Answer = answer.TXT
+			dnsAnswer.Answer = answer.Txt
 		default:
 			dnsAnswer.Answer = "not implemented"
 		}
 
 		dnsAnswer.Type = answer.Type
-		dnsAnswer.Ttl = answer.TTL
+		dnsAnswer.Ttl = answer.Ttl
 
 		dnsAnswers = append(dnsAnswers, dnsAnswer)
 	}
 
-	return []trace.DnsResponseData{
+	return []*pb.DnsResponseData{
 		{
-			QueryData: query,
-			DnsAnswer: dnsAnswers,
+			DnsQueryData: query,
+			DnsAnswer:    dnsAnswers,
 		},
 	}
+}
+
+// TODO this is a duplicate function, there is one like it in event_data.go
+func getHeaders(source http.Header) map[string]*pb.HttpHeader {
+	headers := make(map[string]*pb.HttpHeader)
+
+	for k, v := range source {
+		headers[k] = &pb.HttpHeader{
+			Header: v,
+		}
+	}
+
+	return headers
 }

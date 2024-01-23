@@ -1,10 +1,11 @@
 package derive
 
 import (
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/dnscache"
 	"github.com/aquasecurity/tracee/pkg/events"
 	"github.com/aquasecurity/tracee/pkg/logger"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 const (
@@ -14,14 +15,19 @@ const (
 
 func NetFlowTCPBegin(cache *dnscache.DNSCache) DeriveFunction {
 	return deriveSingleEvent(events.NetFlowTCPBegin,
-		func(event trace.Event) ([]interface{}, error) {
-			tcpBegin := event.ReturnValue&flowTCPBegin == flowTCPBegin
-			ingress := event.ReturnValue&packetIngress == packetIngress
-			egress := event.ReturnValue&packetEgress == packetEgress
+		func(event *types.Event) ([]interface{}, error) {
+			returnValue, err := apiutils.GetReturnValue(event)
+			if err != nil {
+				return nil, err
+			}
+
+			tcpBegin := int(returnValue)&flowTCPBegin == flowTCPBegin
+			ingress := int(returnValue)&packetIngress == packetIngress
+			egress := int(returnValue)&packetEgress == packetEgress
 
 			// Sanity check
 			if (!ingress && !egress) || (ingress && egress) {
-				logger.Debugw("wrong flow direction", "id", event.EventID)
+				logger.Debugw("wrong flow direction", "id", event.Id)
 				return nil, nil
 			}
 			// Return if not a TCP begin flow event
@@ -30,7 +36,7 @@ func NetFlowTCPBegin(cache *dnscache.DNSCache) DeriveFunction {
 			}
 
 			// Get the packet from the event
-			packet, err := createPacketFromEvent(&event)
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}
@@ -81,15 +87,20 @@ func NetFlowTCPBegin(cache *dnscache.DNSCache) DeriveFunction {
 
 func NetFlowTCPEnd(cache *dnscache.DNSCache) DeriveFunction {
 	return deriveSingleEvent(events.NetFlowTCPEnd,
-		func(event trace.Event) ([]interface{}, error) {
-			tcpEnd := event.ReturnValue&flowTCPEnd == flowTCPEnd
-			ingress := event.ReturnValue&packetIngress == packetIngress
-			egress := event.ReturnValue&packetEgress == packetEgress
-			srcInitiated := event.ReturnValue&flowSrcInitiator == flowSrcInitiator
+		func(event *types.Event) ([]interface{}, error) {
+			returnValue, err := apiutils.GetReturnValue(event)
+			if err != nil {
+				return nil, err
+			}
+
+			tcpEnd := int(returnValue)&flowTCPEnd == flowTCPEnd
+			ingress := int(returnValue)&packetIngress == packetIngress
+			egress := int(returnValue)&packetEgress == packetEgress
+			srcInitiated := int(returnValue)&flowSrcInitiator == flowSrcInitiator
 
 			// Sanity check
 			if (!ingress && !egress) || (ingress && egress) {
-				logger.Debugw("wrong flow direction", "id", event.EventID)
+				logger.Debugw("wrong flow direction", "id", event.Id)
 				return nil, nil
 			}
 			// Return if not a TCP end flow event
@@ -98,7 +109,7 @@ func NetFlowTCPEnd(cache *dnscache.DNSCache) DeriveFunction {
 			}
 
 			// Get the packet from the event
-			packet, err := createPacketFromEvent(&event)
+			packet, err := createPacketFromEvent(event)
 			if err != nil {
 				return nil, err
 			}

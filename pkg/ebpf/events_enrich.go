@@ -4,10 +4,12 @@ import (
 	gocontext "context"
 	"sync"
 
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/containers/runtime"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
+
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 )
 
 //
@@ -45,9 +47,9 @@ import (
 //
 
 // enrichContainerEvents is a pipeline stage that enriches container events with metadata.
-func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.Event,
+func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *types.Event,
 ) (
-	chan *trace.Event, chan error,
+	chan *types.Event, chan error,
 ) {
 	// Events may be enriched in the initial decode state, if the enrichment data has been
 	// stored in the Containers structure. In that case, this pipeline stage will be
@@ -66,16 +68,16 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 	// big lock
 	bLock := sync.RWMutex{}
 	// pipeline channels
-	out := make(chan *trace.Event, 10000)
+	out := make(chan *types.Event, 10000)
 	errc := make(chan error, 1)
 	// state machine for enrichment
 	enrichDone := make(map[uint64]bool)
 	enrichInfo := make(map[uint64]*enrichResult)
 	// 1 queue per cgroupId
-	queues := make(map[uint64]chan *trace.Event)
+	queues := make(map[uint64]chan *types.Event)
 	// scheduler queues
 	queueReady := make(chan uint64, queueReadySize)
-	queueClean := make(chan *trace.Event, queueReadySize)
+	queueClean := make(chan *types.Event, queueReadySize)
 
 	// queues map writer
 	go func() {
@@ -87,16 +89,23 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 				if event == nil {
 					continue // might happen during initialization (ctrl+c seg faults)
 				}
-				eventID := events.ID(event.EventID)
+				eventID := events.ID(event.Id)
+
+				containerId := event.GetContext().GetContainer().GetId()
+				containerName := event.GetContext().GetContainer().GetName()
 				// send out irrelevant events (non container or already enriched), don't skip the cgroup lifecycle events
-				if (event.Container.ID == "" || event.Container.Name != "") && eventID != events.CgroupMkdir && eventID != events.CgroupRmdir {
+				if (containerId == "" || containerName != "") && eventID != events.CgroupMkdir && eventID != events.CgroupRmdir {
 					out <- event
 					continue
 				}
-				cgroupId := uint64(event.CgroupID)
+
+				// nao temos o CgroupID?
+				// cgroupId := uint64(event.CgroupID)
+				cgroupId := uint64(1)
+
 				// CgroupMkdir: pick EventID from the event itself
 				if eventID == events.CgroupMkdir {
-					cgroupId, _ = parse.ArgVal[uint64](event.Args, "cgroup_id")
+					cgroupId, _ = apiutils.GetUInt64Arg(event, "cgroup_id")
 				}
 				// CgroupRmdir: clean up remaining events and maps
 				if eventID == events.CgroupRmdir {
@@ -106,7 +115,7 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 				// make sure a queue channel exists for this cgroupId
 				bLock.Lock()
 				if _, ok := queues[cgroupId]; !ok {
-					queues[cgroupId] = make(chan *trace.Event, contQueueSize)
+					queues[cgroupId] = make(chan *types.Event, contQueueSize)
 
 					go func(cgroupId uint64) {
 						metadata, err := t.containers.EnrichCgroupInfo(cgroupId)
@@ -144,9 +153,11 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 						if event == nil {
 							continue // might happen during initialization (ctrl+c seg faults)
 						}
-						eventID := events.ID(event.EventID)
+
+						eventID := events.ID(event.Id)
+						containerName := event.GetContext().GetContainer().GetName()
 						// check if not enriched, and only enrich regular non cgroup related events
-						if event.Container.Name == "" && eventID != events.CgroupMkdir && eventID != events.CgroupRmdir {
+						if containerName == "" && eventID != events.CgroupMkdir && eventID != events.CgroupRmdir {
 							// event is not enriched: enrich if enrichment worked
 							i := enrichInfo[cgroupId]
 							if i.err == nil {
@@ -170,7 +181,7 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 			select {
 			case event := <-queueClean:
 				bLock.Lock()
-				cgroupId, _ := parse.ArgVal[uint64](event.Args, "cgroup_id")
+				cgroupId, _ := apiutils.GetUInt64Arg(event, "cgroup_id")
 				if queue, ok := queues[cgroupId]; ok {
 					// if queue is still full reschedule cleanup
 					if len(queue) > 0 {
@@ -195,16 +206,22 @@ func (t *Tracee) enrichContainerEvents(ctx gocontext.Context, in <-chan *trace.E
 	return out, errc
 }
 
-func enrichEvent(evt *trace.Event, enrichData runtime.ContainerMetadata) {
-	evt.Container = trace.Container{
-		ID:          enrichData.ContainerId,
-		ImageName:   enrichData.Image,
-		ImageDigest: enrichData.ImageDigest,
-		Name:        enrichData.Name,
+func enrichEvent(evt *types.Event, enrichData runtime.ContainerMetadata) {
+	evt.Context.Container = &pb.Container{
+		Id:   enrichData.ContainerId,
+		Name: enrichData.Name,
+		Image: &pb.ContainerImage{
+			Name:        enrichData.Image,
+			RepoDigests: []string{enrichData.ImageDigest},
+		},
 	}
-	evt.Kubernetes = trace.Kubernetes{
-		PodName:      enrichData.Pod.Name,
-		PodNamespace: enrichData.Pod.Namespace,
-		PodUID:       enrichData.Pod.UID,
+	evt.Context.K8S = &pb.K8S{
+		Pod: &pb.Pod{
+			Name: enrichData.Pod.Name,
+			Uid:  enrichData.Pod.UID,
+		},
+		Namespace: &pb.K8SNamespace{
+			Name: enrichData.Pod.Namespace,
+		},
 	}
 }

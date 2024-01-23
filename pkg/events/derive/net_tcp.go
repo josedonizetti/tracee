@@ -4,19 +4,19 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/aquasecurity/tracee/pkg/apiutils"
 	"github.com/aquasecurity/tracee/pkg/dnscache"
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/events"
-	"github.com/aquasecurity/tracee/pkg/events/parse"
 	"github.com/aquasecurity/tracee/pkg/logger"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 // NOTE: Derived from security_socket_XXX events, not from net_packet_XXX ones.
 
 func NetTCPConnect(cache *dnscache.DNSCache) DeriveFunction {
 	return deriveSingleEvent(events.NetTCPConnect,
-		func(event trace.Event) ([]interface{}, error) {
+		func(event *types.Event) ([]interface{}, error) {
 			dstIP, dstPort, err := pickIpAndPort(event, "remote_addr")
 			if err != nil {
 				logger.Debugw("error picking address", "error", err)
@@ -53,12 +53,12 @@ func NetTCPConnect(cache *dnscache.DNSCache) DeriveFunction {
 }
 
 // pickIpAndPort returns the IP address and port from the event's sockaddr field.
-func pickIpAndPort(event trace.Event, fieldName string) (string, int, error) {
+func pickIpAndPort(event *types.Event, fieldName string) (string, int, error) {
 	var err error
 	// e.g: sockaddr: map[sa_family:AF_INET sin_addr:10.10.11.2 sin_port:1234]
 
 	// Check if socket is a TCP socket.
-	sType, err := parse.ArgVal[string](event.Args, "type")
+	sType, err := apiutils.GetStringArg(event, "type")
 	if err != nil {
 		return "", 0, errfmt.WrapError(err)
 	}
@@ -67,7 +67,7 @@ func pickIpAndPort(event trace.Event, fieldName string) (string, int, error) {
 	}
 
 	// Get sockaddr field.
-	sockaddr, err := parse.ArgVal[map[string]string](event.Args, fieldName)
+	sockaddr, err := apiutils.GetMapStringStringArg(event, "fieldName")
 	if err != nil {
 		return "", 0, errfmt.WrapError(err)
 	}

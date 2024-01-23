@@ -2,7 +2,7 @@ package sorting
 
 import (
 	"github.com/aquasecurity/tracee/pkg/errfmt"
-	"github.com/aquasecurity/tracee/types/trace"
+	"github.com/aquasecurity/tracee/pkg/types"
 )
 
 // Events queue with the ability to follow if it was updated since last check and insertion by time specific for CPU
@@ -13,7 +13,7 @@ type cpuEventsQueue struct {
 }
 
 // InsertByTimestamp insert new event to the queue in the right position according to its timestamp
-func (cq *cpuEventsQueue) InsertByTimestamp(newEvent *trace.Event) error {
+func (cq *cpuEventsQueue) InsertByTimestamp(newEvent *types.Event) error {
 	newNode, err := cq.pool.Alloc(newEvent)
 	if err != nil {
 		cq.pool.Reset()
@@ -21,15 +21,20 @@ func (cq *cpuEventsQueue) InsertByTimestamp(newEvent *trace.Event) error {
 
 	cq.mutex.Lock()
 	defer cq.mutex.Unlock()
+
+	eventTimestamp := cq.tail.event.Timestamp.AsTime()
+	newEventTimestamp := newEvent.Timestamp.AsTime()
+
 	if cq.tail != nil &&
-		cq.tail.event.Timestamp > newEvent.Timestamp {
+		eventTimestamp.After(newEventTimestamp) {
 		// We have a fresh event with a timestamp older than the last event received in this cpu's queue.
 		// This can only happen if this fresh event is a syscall event (for which we take the entry timestamp) which
 		// called some internal kernel functions (that are also traced). Insert the syscall event before these other
 		// events
 		insertLocation := cq.tail
 		for insertLocation.next != nil {
-			if insertLocation.next.event.Timestamp < newEvent.Timestamp {
+			ts := insertLocation.next.event.Timestamp.AsTime()
+			if ts.Before(newEvent.Timestamp.AsTime()) {
 				break
 			}
 			if insertLocation.next == insertLocation {

@@ -107,8 +107,8 @@ import (
 
 	"github.com/aquasecurity/tracee/pkg/errfmt"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils/environment"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 // The minimum time of delay before sending events forward.
@@ -142,9 +142,9 @@ func InitEventSorter() (*EventsChronologicalSorter, error) {
 	return &newSorter, nil
 }
 
-func (sorter *EventsChronologicalSorter) StartPipeline(ctx gocontext.Context, in <-chan *trace.Event) (
-	chan *trace.Event, chan error) {
-	out := make(chan *trace.Event, 10000)
+func (sorter *EventsChronologicalSorter) StartPipeline(ctx gocontext.Context, in <-chan *types.Event) (
+	chan *types.Event, chan error) {
+	out := make(chan *types.Event, 10000)
 	errc := make(chan error, 1)
 	go sorter.Start(in, out, ctx, errc)
 	return out, errc
@@ -153,7 +153,7 @@ func (sorter *EventsChronologicalSorter) StartPipeline(ctx gocontext.Context, in
 // Start is the main function of the EventsChronologicalSorter class, which orders input events from events channels
 // and pass forward all ordered events to the output channel after each interval.
 // When exits, the sorter will send forward all buffered events in ordered matter.
-func (sorter *EventsChronologicalSorter) Start(in <-chan *trace.Event, out chan<- *trace.Event,
+func (sorter *EventsChronologicalSorter) Start(in <-chan *types.Event, out chan<- *types.Event,
 	ctx gocontext.Context, errc chan error) {
 	sorter.errorChan = errc
 	defer close(out)
@@ -183,8 +183,10 @@ func (sorter *EventsChronologicalSorter) Start(in <-chan *trace.Event, out chan<
 }
 
 // addEvent add a new event to the appropriate place in queue according to its timestamp
-func (sorter *EventsChronologicalSorter) addEvent(newEvent *trace.Event) {
-	cq := &sorter.cpuEventsQueues[newEvent.ProcessorID]
+func (sorter *EventsChronologicalSorter) addEvent(newEvent *types.Event) {
+	// TODO: we don't have processor id anymore?ProcessorID
+	// cq := &sorter.cpuEventsQueues[newEvent.ProcessorID]
+	cq := &sorter.cpuEventsQueues[1]
 	err := cq.InsertByTimestamp(newEvent)
 	if err != nil {
 		sorter.errorChan <- err
@@ -193,7 +195,7 @@ func (sorter *EventsChronologicalSorter) addEvent(newEvent *trace.Event) {
 }
 
 // sendEvents send to output channel all events up to given timestamp
-func (sorter *EventsChronologicalSorter) sendEvents(outputChan chan<- *trace.Event, extractionMaxTimestamp int) {
+func (sorter *EventsChronologicalSorter) sendEvents(outputChan chan<- *types.Event, extractionMaxTimestamp int) {
 	sorter.outputChanMutex.Lock()
 	defer sorter.outputChanMutex.Unlock()
 	for {
@@ -209,7 +211,7 @@ func (sorter *EventsChronologicalSorter) sendEvents(outputChan chan<- *trace.Eve
 				continue
 			}
 		}
-		if extractionEvent.Timestamp != eventTimestamp {
+		if extractionEvent.Timestamp.AsTime().Unix() != int64(eventTimestamp) {
 			logger.Warnw("Event queue changed while extracting events")
 			err := mostDelayingQueue.InsertByTimestamp(extractionEvent)
 			if err != nil {
@@ -250,9 +252,9 @@ func (sorter *EventsChronologicalSorter) getMostDelayingEventCPUQueue() (*cpuEve
 		cqHead := cq.PeekHead()
 		if cqHead != nil &&
 			(mostDelayingEventQueue == nil ||
-				cqHead.Timestamp < mostDelayingEventQueueHeadTimestamp) {
+				int(cqHead.Timestamp.AsTime().Unix()) < mostDelayingEventQueueHeadTimestamp) {
 			mostDelayingEventQueue = cq
-			mostDelayingEventQueueHeadTimestamp = cqHead.Timestamp
+			mostDelayingEventQueueHeadTimestamp = int(cqHead.Timestamp.AsTime().UnixNano())
 		}
 	}
 	if mostDelayingEventQueue == nil {
@@ -265,15 +267,15 @@ func (sorter *EventsChronologicalSorter) getMostDelayingEventCPUQueue() (*cpuEve
 // last check
 // Queues which were not updated since last check are ignored to prevent events starvation if a CPU is not active
 func (sorter *EventsChronologicalSorter) getUpdatedMostDelayedLastCPUEventTimestamp() (int, error) {
-	var newMostDelayedEventTimestamp int
+	var newMostDelayedEventTimestamp int64
 	foundUpdatedQueue := false
 	for i := 0; i < len(sorter.cpuEventsQueues); i++ {
 		cq := &sorter.cpuEventsQueues[i]
 		queueTail := cq.PeekTail()
 		if queueTail != nil && cq.IsUpdated &&
 			(!foundUpdatedQueue ||
-				queueTail.Timestamp < newMostDelayedEventTimestamp) {
-			newMostDelayedEventTimestamp = queueTail.Timestamp
+				queueTail.Timestamp.AsTime().Unix() < newMostDelayedEventTimestamp) {
+			newMostDelayedEventTimestamp = queueTail.Timestamp.AsTime().UnixNano()
 			foundUpdatedQueue = true
 		}
 		cq.IsUpdated = false // Mark that the values of the queue were checked from previous time
@@ -281,22 +283,22 @@ func (sorter *EventsChronologicalSorter) getUpdatedMostDelayedLastCPUEventTimest
 	if !foundUpdatedQueue {
 		return 0, errfmt.Errorf("no valid CPU events queue was updated since last interval")
 	}
-	return newMostDelayedEventTimestamp, nil
+	return int(newMostDelayedEventTimestamp), nil
 }
 
 // getMostRecentEventTimestamp get the timestamp of the most recent event received from all CPUs.
 func (sorter *EventsChronologicalSorter) getMostRecentEventTimestamp() (int, error) {
-	mostRecentEventTimestamp := 0
+	var mostRecentEventTimestamp int64
 	for i := 0; i < len(sorter.cpuEventsQueues); i++ {
 		cq := &sorter.cpuEventsQueues[i]
 		queueTail := cq.PeekTail()
 		if queueTail != nil &&
-			queueTail.Timestamp > mostRecentEventTimestamp {
-			mostRecentEventTimestamp = queueTail.Timestamp
+			queueTail.Timestamp.AsTime().Unix() > mostRecentEventTimestamp {
+			mostRecentEventTimestamp = queueTail.Timestamp.AsTime().Unix()
 		}
 	}
 	if mostRecentEventTimestamp == 0 {
 		return 0, errfmt.Errorf("all CPU queues are empty")
 	}
-	return mostRecentEventTimestamp, nil
+	return int(mostRecentEventTimestamp), nil
 }

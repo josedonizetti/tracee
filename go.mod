@@ -184,3 +184,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.68 // indirect
 )
+
+replace github.com/aquasecurity/tracee/signatures/helpers v0.0.0-20240122160245-67dec940088c => ./signatures/helpers

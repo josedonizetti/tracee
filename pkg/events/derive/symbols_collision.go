@@ -9,8 +9,8 @@ import (
 	"github.com/aquasecurity/tracee/pkg/filters"
 	"github.com/aquasecurity/tracee/pkg/logger"
 	"github.com/aquasecurity/tracee/pkg/policy"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils/sharedobjs"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 //
@@ -93,19 +93,19 @@ func initSOCollisionsEventGenerator(
 }
 
 // deriveArgs calls the appropriate derivation handler depending on the event type.
-func (gen *SymbolsCollisionArgsGenerator) deriveArgs(event trace.Event) ([][]interface{}, []error) {
-	switch events.ID(event.EventID) {
+func (gen *SymbolsCollisionArgsGenerator) deriveArgs(event *types.Event) ([][]interface{}, []error) {
+	switch events.ID(event.Id) {
 	case events.SharedObjectLoaded:
 		return gen.handleShObjLoaded(event) // manages symbol collisions caches and generate events
 	case events.SchedProcessExec:
 		return gen.handleExec(event) // evicts saved data (loaded shared objects) for the process
 	}
 
-	return nil, []error{errfmt.Errorf("received unexpected event - \"%s\"", event.EventName)}
+	return nil, []error{errfmt.Errorf("received unexpected event - \"%s\"", event.Name)}
 }
 
 // handleShObjLoaded handles the shared object loaded event (from mmap).
-func (gen *SymbolsCollisionArgsGenerator) handleShObjLoaded(event trace.Event) (
+func (gen *SymbolsCollisionArgsGenerator) handleShObjLoaded(event *types.Event) (
 	[][]interface{}, []error,
 ) {
 	// When a shared object is loaded into a process virtual memory address space, check if some of
@@ -117,15 +117,17 @@ func (gen *SymbolsCollisionArgsGenerator) handleShObjLoaded(event trace.Event) (
 		return nil, []error{err}
 	}
 
+	hostProcessID := event.GetContext().GetProcess().GetPid().GetValue()
+
 	// pick loaded shared objects of the process
-	loadedShObjsInfo, ok := gen.loadedObjsPerProcCache.GetLoadedObjsPerProcess(event.HostProcessID)
+	loadedShObjsInfo, ok := gen.loadedObjsPerProcCache.GetLoadedObjsPerProcess(int(hostProcessID))
 	if !ok {
 		loadedShObjsInfo = []sharedobjs.ObjInfo{}
 	}
 
 	// new list including object being loaded, add new list to shared objects cache per process
 	newLoadedObjs := append(loadedShObjsInfo, loadingObjectInfo)
-	gen.loadedObjsPerProcCache.SetProcessLoadedObjects(event.HostProcessID, newLoadedObjs)
+	gen.loadedObjsPerProcCache.SetProcessLoadedObjects(int(hostProcessID), newLoadedObjs)
 
 	loadingObject := &loadingSharedObj{
 		ObjInfo: loadingObjectInfo,
@@ -223,13 +225,16 @@ func (gen *SymbolsCollisionArgsGenerator) findShObjsCollisions(
 }
 
 // handleExec handles the execve() system call event.
-func (gen *SymbolsCollisionArgsGenerator) handleExec(event trace.Event) (
+func (gen *SymbolsCollisionArgsGenerator) handleExec(event *types.Event) (
 	[][]interface{}, []error,
 ) {
+
+	// TODO: josedonizetti -> is this correct?
+	hostProcessID := event.GetContext().GetProcess().GetPid().GetValue()
 	// Delete (set to empty) a process saved data (loaded shared objects information) for the
 	// process if it calls execve(). This is needed because all the virtual memory address space of
 	// such process will vanish and the saved data will be useless.
-	gen.loadedObjsPerProcCache.SetProcessLoadedObjects(event.HostProcessID, []sharedobjs.ObjInfo{})
+	gen.loadedObjsPerProcCache.SetProcessLoadedObjects(int(hostProcessID), []sharedobjs.ObjInfo{})
 
 	return nil, nil
 }

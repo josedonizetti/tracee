@@ -9,9 +9,12 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	pb "github.com/aquasecurity/tracee/api/v1beta1"
 	"github.com/aquasecurity/tracee/pkg/counter"
 	"github.com/aquasecurity/tracee/pkg/logger"
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/pkg/utils"
 	"github.com/aquasecurity/tracee/types/trace"
 )
@@ -55,8 +58,24 @@ func GetFtraceBaseEvent() *trace.Event {
 	return ftraceHookBaseEvent
 }
 
-// FtraceHookEvent check for ftrace hooks periodically and reports them.
-// It wakes up every random time to check if there was a change in the hooks.
+func GetFtraceBaseEvent2() *types.Event {
+	ftraceHookBaseEvent := &types.Event{
+		Event: &pb.Event{
+			Id: uint32(FtraceHook),
+			Context: &pb.Context{
+				Process: &pb.Process{
+					Thread: &pb.Thread{
+						Name: "tracee",
+					},
+				},
+			},
+			Name: Core.GetDefinitionByID(FtraceHook).GetName(),
+		},
+	}
+
+	return ftraceHookBaseEvent
+}
+
 func FtraceHookEvent(eventsCounter counter.Counter, out chan *trace.Event, baseEvent *trace.Event, selfLoadedProgs map[string]int) {
 	if reportedFtraceHooks == nil { // Failed allocating cache - no point in running
 		return
@@ -66,6 +85,23 @@ func FtraceHookEvent(eventsCounter counter.Counter, out chan *trace.Event, baseE
 
 	for {
 		err := checkFtraceHooks(eventsCounter, out, baseEvent, &def, selfLoadedProgs)
+		if err != nil {
+			logger.Errorw("error occurred checking ftrace hooks", "error", err)
+		}
+
+		time.Sleep(utils.GenerateRandomDuration(10, 300))
+	}
+}
+
+func FtraceHookEvent2(eventsCounter counter.Counter, out chan *types.Event, baseEvent *types.Event, selfLoadedProgs map[string]int) {
+	if reportedFtraceHooks == nil { // Failed allocating cache - no point in running
+		return
+	}
+
+	def := Core.GetDefinitionByID(FtraceHook)
+
+	for {
+		err := checkFtraceHooks2(eventsCounter, out, baseEvent, &def, selfLoadedProgs)
 		if err != nil {
 			logger.Errorw("error occurred checking ftrace hooks", "error", err)
 		}
@@ -158,6 +194,62 @@ func checkFtraceHooks(eventsCounter counter.Counter, out chan *trace.Event, base
 		event.ArgsNum = len(args)
 
 		out <- &event
+		_ = eventsCounter.Increment()
+	}
+
+	return nil
+}
+
+func checkFtraceHooks2(eventsCounter counter.Counter, out chan *types.Event, baseEvent *types.Event, ftraceDef *Definition, selfLoadedProgs map[string]int) error {
+	ftraceHooksBytes, err := getFtraceHooksData()
+	if err != nil {
+		return err
+	}
+
+	for _, ftraceLine := range strings.Split(string(ftraceHooksBytes), "\n") {
+		if len(ftraceLine) == 0 {
+			continue
+		}
+
+		params := ftraceDef.GetParams()
+		args := initFtraceArgs(params)
+		err = parseEventArgs(ftraceLine, args) // Fill args
+		if err != nil {
+			return err
+		}
+
+		causedByTracee, newCount, err := isCausedBySelfLoadedProg(selfLoadedProgs, args[symbolIndex].Value.(string), args[countIndex].Value.(int))
+		if err != nil {
+			return err
+		}
+
+		if causedByTracee {
+			continue
+		}
+
+		args[countIndex].Value = newCount
+		symbol := args[symbolIndex].Value.(string)
+
+		// Verify that we didn't report this symbol already, and it wasn't changed.
+		// If we reported the symbol in the past, and now the count has reduced - report only if the callback was changed
+		if existingEntry, found := reportedFtraceHooks.Get(symbol); found {
+			if reflect.DeepEqual(existingEntry, args) ||
+				(args[countIndex].Value.(int) < existingEntry[countIndex].Value.(int) &&
+					args[callbackFuncIndex].Value == existingEntry[callbackFuncIndex].Value) {
+				continue
+			}
+		}
+
+		reportedFtraceHooks.Add(symbol, args) // Mark that we're reporting this hook, so we won't report it multiple times
+
+		event := &types.Event{
+			Event: &pb.Event{
+				Timestamp: timestamppb.New(time.Now()),
+				// Data:      args, TODO: josedonizetti fixme
+			},
+		}
+
+		out <- event
 		_ = eventsCounter.Increment()
 	}
 

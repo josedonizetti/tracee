@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type SystemRequestKeyConfigModification struct {
@@ -45,12 +45,12 @@ func (sig *SystemRequestKeyConfigModification) GetSelectedEvents() ([]detect.Sig
 }
 
 func (sig *SystemRequestKeyConfigModification) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_file_open":
 		flags, err := helpers.GetTraceeStringArgumentByName(eventObj, "flags")
 		if err != nil {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type K8sApiConnection struct {
@@ -45,17 +45,17 @@ func (sig *K8sApiConnection) GetSelectedEvents() ([]detect.SignatureEventSelecto
 }
 
 func (sig *K8sApiConnection) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("failed to cast event's payload")
 	}
 
-	containerID := eventObj.Container.ID
+	containerID := eventObj.GetContext().GetContainer().GetId()
 	if containerID == "" {
 		return nil
 	}
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "sched_process_exec":
 		envVars, err := helpers.GetTraceeSliceStringArgumentByName(eventObj, "env")
 		if err != nil {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aquasecurity/tracee/pkg/types"
 	"github.com/aquasecurity/tracee/signatures/helpers"
 	"github.com/aquasecurity/tracee/types/detect"
 	"github.com/aquasecurity/tracee/types/protocol"
-	"github.com/aquasecurity/tracee/types/trace"
 )
 
 type KubernetesCertificateTheftAttempt struct {
@@ -49,18 +49,18 @@ func (sig *KubernetesCertificateTheftAttempt) GetSelectedEvents() ([]detect.Sign
 }
 
 func (sig *KubernetesCertificateTheftAttempt) OnEvent(event protocol.Event) error {
-	eventObj, ok := event.Payload.(trace.Event)
+	eventObj, ok := event.Payload.(*types.Event)
 	if !ok {
 		return fmt.Errorf("invalid event")
 	}
 
 	path := ""
 
-	switch eventObj.EventName {
+	switch eventObj.Name {
 	case "security_file_open":
 		// check process touching certificate is not on allow list
 		for _, legitProc := range sig.legitProcs {
-			if legitProc == eventObj.ProcessName {
+			if legitProc == eventObj.GetContext().GetProcess().GetThread().GetName() {
 				return nil
 			}
 		}
