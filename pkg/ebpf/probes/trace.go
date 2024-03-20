@@ -22,6 +22,7 @@ const (
 	KretProbe            // github.com/iovisor/bcc/blob/master/docs/reference_guide.md#1-kp
 	Tracepoint           // github.com/iovisor/bcc/blob/master/docs/reference_guide.md#3-tracep
 	RawTracepoint        // github.com/iovisor/bcc/blob/master/docs/reference_guide.md#7-raw-tracep
+	Fentry
 )
 
 // When attaching a traceProbe, by handle, to its eBPF program:
@@ -158,6 +159,8 @@ func (p *TraceProbe) attach(module *bpf.Module, args ...interface{}) error {
 	case RawTracepoint:
 		tpEvent := strings.Split(p.eventName, ":")[1]
 		link, err = prog.AttachRawTracepoint(tpEvent)
+	case Fentry:
+		link, err = prog.AttachGeneric()
 	}
 	if err != nil {
 		return errfmt.Errorf("failed to attach event: %s (%v)", p.eventName, err)

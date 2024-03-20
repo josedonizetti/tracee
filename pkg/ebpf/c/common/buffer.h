@@ -61,6 +61,33 @@ statfunc int save_to_submit_buf(args_buffer_t *buf, void *ptr, u32 size, u8 inde
     return 0;
 }
 
+statfunc int save_to_submit_buf2(args_buffer_t *buf, void *ptr, u32 size, u8 index)
+{
+    // Data saved to submit buf: [index][ ... buffer[size] ... ]
+
+    if (size == 0)
+        return 0;
+
+    barrier();
+    if (buf->offset > ARGS_BUF_SIZE - 1)
+        return 0;
+
+    // Save argument index
+    buf->args[buf->offset] = index;
+
+    // Satisfy verifier
+    if (buf->offset > ARGS_BUF_SIZE - (MAX_ELEMENT_SIZE + 1))
+        return 0;
+
+    // Read into buffer
+    __builtin_memcpy(&(buf->args[buf->offset + 1]), ptr, size);
+    
+    // We update offset only if all writes were successful
+    buf->offset += size + 1;
+    buf->argnum++;
+    return 1;
+}
+
 statfunc int save_bytes_to_buf(args_buffer_t *buf, void *ptr, u32 size, u8 index)
 {
     // Data saved to submit buf: [index][size][ ... bytes ... ]

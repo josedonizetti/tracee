@@ -821,6 +821,21 @@ struct bpf_sock;
 
 // TODO: can't CO-RE __sk_buff (check)
 
+struct bpf_sock_addr {
+        __u32 user_family;
+        __u32 user_ip4;
+        __u32 user_ip6[4];
+        __u32 user_port;
+        __u32 family;
+        __u32 type;
+        __u32 protocol;
+        __u32 msg_src_ip4;
+        __u32 msg_src_ip6[4];
+        union {
+                struct bpf_sock *sk;
+        };
+};
+
 struct __sk_buff {
     __u32 len;
     __u32 pkt_type;

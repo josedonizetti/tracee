@@ -40,6 +40,7 @@ const (
 	uint64ArrT
 	u8T
 	timespecT
+	ip32T
 )
 
 // These types don't match the ones defined in the ebpf code since they are not being used by syscalls arguments.
@@ -186,7 +187,13 @@ func readArgFromBuff(id events.ID, ebpfMsgDecoder *EbpfDecoder, params []trace.A
 		}
 		err = ebpfMsgDecoder.DecodeInt64(&nsec)
 		res = float64(sec) + (float64(nsec) / float64(1000000000))
+	case ip32T:
+		data, err := ReadByteSliceFromBuff(ebpfMsgDecoder, 4)
+		if err != nil {
+			return uint(argIdx), arg, errfmt.WrapError(err)
+		}
 
+		res = net.IP(data)
 	default:
 		// if we don't recognize the arg type, we can't parse the rest of the buffer
 		return uint(argIdx), arg, errfmt.Errorf("error unknown arg type %v", argType)
@@ -200,6 +207,10 @@ func readArgFromBuff(id events.ID, ebpfMsgDecoder *EbpfDecoder, params []trace.A
 
 func GetParamType(paramType string) ArgType {
 	switch paramType {
+	case "u16":
+		return u16T
+	case "ip32":
+		return ip32T
 	case "int", "pid_t", "uid_t", "gid_t", "mqd_t", "clockid_t", "const clockid_t", "key_t", "key_serial_t", "timer_t":
 		return intT
 	case "unsigned int", "u32":

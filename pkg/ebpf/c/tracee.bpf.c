@@ -6100,14 +6100,16 @@ statfunc u32 cgroup_skb_generic(struct __sk_buff *ctx, void *cgrpctxmap)
 }
 
 SEC("cgroup_skb/ingress")
-int cgroup_skb_ingress(struct __sk_buff *ctx)
+int legacy_cgroup_skb_ingress(struct __sk_buff *ctx)
 {
+    bpf_printk("old ingress section");
     return cgroup_skb_generic(ctx, &cgrpctxmap_in);
 }
 
 SEC("cgroup_skb/egress")
-int cgroup_skb_egress(struct __sk_buff *ctx)
+int legacy_cgroup_skb_egress(struct __sk_buff *ctx)
 {
+    bpf_printk("old egress section");
     return cgroup_skb_generic(ctx, &cgrpctxmap_eg);
 }
 
@@ -6818,3 +6820,281 @@ int sched_process_exit_signal(struct bpf_raw_tracepoint_args *ctx)
 }
 
 // END OF Control Plane Programs
+
+
+// Network POC
+SEC("fentry/security_socket_recvmsg")
+int BPF_PROG(fentry_security_socket_recvmsg, struct socket *sock)
+{
+    if (sock == NULL)
+        return 0;
+    if (!is_family_supported(sock))
+        return 0;
+    if (!is_socket_supported(sock))
+        return 0;
+
+    program_data_t p = {};
+    if (!init_program_data(&p, ctx))
+        return 0;
+
+    if (!should_trace(&p))
+        return 0;
+
+    struct sock *sk = sock->sk;
+    if (sk == NULL)
+        return 0;
+
+    socket_storage_t *socket_storage ;
+    socket_storage = bpf_sk_storage_get(&socket_local_storage, sk, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
+
+    if (!socket_storage)
+        return 0;
+      
+    socket_storage->host_tid = p.event->context.task.host_tid;
+
+    return 0;
+}
+
+
+statfunc event_data_t *init_network_event_t()
+{
+    int zero = 0;
+    event_data_t *netevent;
+    netevent = bpf_map_lookup_elem(&event_data_map, &zero);
+    if (unlikely(netevent == NULL))
+        return 0;
+
+    netevent->args_buf.argnum = 0;
+    netevent->args_buf.offset = 0;
+    return netevent;
+}
+
+SEC("fentry/security_socket_sendmsg")
+int BPF_PROG(fentry_security_socket_sendmsg, struct socket *sock)
+{
+    if (sock == NULL)
+        return 0;
+    if (!is_family_supported(sock))
+        return 0;
+    if (!is_socket_supported(sock))
+        return 0;
+
+    program_data_t p = {};
+    if (!init_program_data(&p, ctx))
+        return 0;
+
+    if (!should_trace(&p))
+        return 0;
+
+    struct sock *sk = sock->sk;
+    if (sk == NULL)
+        return 0;
+
+    socket_storage_t *socket_storage ;
+    socket_storage = bpf_sk_storage_get(&socket_local_storage, sk, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
+
+    if (!socket_storage)
+        return 0;
+      
+    socket_storage->host_tid = p.event->context.task.host_tid;
+
+    return 0;
+}
+
+statfunc int netevent_perf_submit(void *ctx, event_data_t *event, u32 id)
+{
+    event->context.eventid = id;
+
+    // need to recompute here
+
+    u32 size = sizeof(event_context_t) + sizeof(u8) +
+               event->args_buf.offset; // context + argnum + arg buffer size
+
+    // inline bounds check to force compiler to use the register of size
+    asm volatile("if %[size] < %[max_size] goto +1;\n"
+                 "%[size] = %[max_size];\n"
+                 :
+                 : [size] "r"(size), [max_size] "i"(MAX_SIGNAL_SIZE));
+
+    return bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, event, size);
+}
+
+
+statfunc u32 cgroup_skb_generic2(struct __sk_buff *ctx)
+{
+    // IMPORTANT: runs for EVERY packet of tasks belonging to root cgroup
+    switch (ctx->family) {
+        case PF_INET:
+        case PF_INET6:
+            break;
+        default:
+            return 1; // PF_INET and PF_INET6 only
+    }
+
+    struct bpf_sock *sk = ctx->sk;
+    if (!sk)
+        return 1;
+
+    socket_storage_t *socket_storage = bpf_sk_storage_get(&socket_local_storage, sk, 0, 0);
+    if (!socket_storage) {
+        return 1;
+    }
+    
+    task_info_t *task_info = bpf_map_lookup_elem(&task_info_map, &socket_storage->host_tid);
+    if (unlikely(task_info == NULL)) {
+        return 1;
+    }
+
+    sk = bpf_sk_fullsock(sk); // TODO: do we need a bpf_sk_fullsock? 
+    if (!sk)
+        return 1;
+
+    nethdrs hdrs = {0}, *nethdrs = &hdrs;
+
+    void *dest = NULL;
+
+    // HANDLE SOCKET FAMILY
+    u32 size = 0;
+    u32 family = ctx->family;
+
+    switch (family) {
+        case PF_INET:
+            dest = &nethdrs->iphdrs.iphdr;
+            size = get_type_size(struct iphdr);
+            break;
+        case PF_INET6:
+            dest = &nethdrs->iphdrs.ipv6hdr;
+            size = get_type_size(struct ipv6hdr);
+            break;
+        default:
+            return 1; // verifier
+    }
+
+    // load layer 3 headers
+    if (bpf_skb_load_bytes_relative(ctx, 0, dest, size, 1))
+        return 1;
+
+    u8 next_proto = 0;
+    netflow_t netflow = {0}, *flow = &netflow;
+
+    switch (ctx->family) {
+        case PF_INET:
+            if (nethdrs->iphdrs.iphdr.version != 4) // IPv4
+                return 1;
+
+            next_proto = nethdrs->iphdrs.iphdr.protocol;
+
+            u32 prev_hdr_size = size;
+            switch (next_proto) {
+                case IPPROTO_TCP:
+                    dest = &nethdrs->protohdrs.tcphdr;
+                    size = get_type_size(struct tcphdr);
+                    break;
+                case IPPROTO_UDP:
+                    dest = &nethdrs->protohdrs.udphdr;
+                    size = get_type_size(struct udphdr);
+                    break;
+                default:
+                    return 1; // other protocols are not an error
+            }
+
+            // Load the next protocol header.
+            if (bpf_skb_load_bytes_relative(ctx, prev_hdr_size, dest, size, BPF_HDR_START_NET))
+                return 1;
+
+            switch (next_proto) {
+                case IPPROTO_TCP:
+                    flow->srcport = bpf_ntohs(nethdrs->protohdrs.tcphdr.source);
+                    flow->dstport = bpf_ntohs(nethdrs->protohdrs.tcphdr.dest);
+                    break;
+                case IPPROTO_UDP:
+                    flow->srcport = bpf_ntohs(nethdrs->protohdrs.udphdr.source);
+                    flow->dstport = bpf_ntohs(nethdrs->protohdrs.udphdr.dest);
+                    break;
+                default:
+                    return 1; // other protocols are not an error
+            }
+            break;
+
+        case PF_INET6: // ignore for now
+            return 1;
+        default:
+            return 1; // verifier needs as this was already checked
+    }
+
+    switch (flow->srcport < flow->dstport ? flow->srcport : flow->dstport) {
+        case 53:
+            break;
+        default:
+            return 1;
+    }
+
+    event_data_t *net_event = init_network_event_t();
+    if (unlikely(net_event == NULL))
+        return 0;
+
+
+    args_buffer_t *buf = &net_event->args_buf;
+
+    buf->args[buf->offset] = 0; //index
+    buf->args[buf->offset + 1] = flow->srcport; //value
+    buf->offset += 2 + 1; // size
+    buf->argnum++; // argsnum
+
+    buf->args[buf->offset] = 1;
+    buf->args[buf->offset + 1] = flow->dstport;
+    buf->offset += 2 + 1;
+    buf->argnum++;
+
+    buf->args[buf->offset] = 2;
+    __builtin_memcpy(&(buf->args[buf->offset + 1]), &nethdrs->iphdrs.iphdr.saddr, sizeof(nethdrs->iphdrs.iphdr.saddr));
+    buf->offset += sizeof(nethdrs->iphdrs.iphdr.saddr) + 1;
+    buf->argnum++;
+
+    buf->args[buf->offset] = 3;
+    __builtin_memcpy(&(buf->args[buf->offset + 1]), &nethdrs->iphdrs.iphdr.daddr, sizeof(nethdrs->iphdrs.iphdr.daddr));
+    buf->offset += sizeof(nethdrs->iphdrs.iphdr.daddr) + 1;
+    buf->argnum++;
+
+
+    event_context_t *eventctx = &(net_event->context);
+
+    __builtin_memcpy(&eventctx->task, &task_info->context, sizeof(task_context_t));
+    eventctx->ts = ctx->tstamp;                             // copy timestamp from current ctx
+
+    // TODO: this isn't need, right?
+    eventctx->eventid = NET_POC;                            // will be changed in skb program
+
+    // TODO: eu tenho acesso a merda desses acessors?
+    // para que essa merda desses fields são usados?
+
+    eventctx->stack_id = 0;                                 // no stack trace
+    eventctx->processor_id = 0; // copy from current ctx
+
+    // TODO: qual foi desses fields dado a mudança do yaniv
+    // eventctx->policies_version = socket_storage->policies_version;  // pick policies_version from net ctx
+    //eventctx->matched_policies = socket_storage->matched_policies;  // pick matched_policies from net ctx
+
+    eventctx->syscall = NO_SYSCALL;                         // ingress has no orig syscall
+    // if (type == BPF_CGROUP_INET_EGRESS)
+    //     eventctx->syscall = netctx->syscall; // egress does have an orig syscall
+
+
+    netevent_perf_submit(ctx, net_event, NET_POC);
+
+    return 1; // important for network blocking
+}
+
+SEC("cgroup_skb/ingress")
+int cgroup_skb_ingress(struct __sk_buff *ctx)
+{
+    bpf_printk("new ingress section");
+    return cgroup_skb_generic2(ctx);
+}
+
+SEC("cgroup_skb/egress")
+int cgroup_skb_egress(struct __sk_buff *ctx)
+{
+    bpf_printk("new egress section");
+    return cgroup_skb_generic2(ctx);
+}

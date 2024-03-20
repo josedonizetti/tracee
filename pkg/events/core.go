@@ -33,6 +33,7 @@ const (
 	NetPacketHTTPBase
 	NetPacketCapture
 	NetPacketFlow
+	NetPoc
 	MaxNetID // network base events go ABOVE this item
 	SysEnter
 	SysExit
@@ -13092,6 +13093,33 @@ var CoreEvents = map[ID]Definition{
 	//
 	// Begin of Network Protocol Event Types
 	//
+	NetPoc: {
+		id:      NetPoc,
+		id32Bit: Sys32Undefined,
+		name:    "net_poc",
+		version: NewVersion(1, 0, 0),
+		dependencies: Dependencies{
+			capabilities: Capabilities{
+				ebpf: []cap.Value{
+					cap.NET_ADMIN, // needed for BPF_PROG_TYPE_CGROUP_SKB
+				},
+			},
+			probes: []Probe{
+				{handle: probes.FentrySecuritySocketRecvmsg, required: true},
+				{handle: probes.FentrySecuritySocketSendmsg, required: true},
+				{handle: probes.CgroupSKBIngress, required: true},
+				{handle: probes.CgroupSKBEgress, required: true},
+			},
+		},
+		sets: []string{"network_events"},
+		params: []trace.ArgMeta{
+			// TODO: pack and remove into trace.PacketMetadata after it supports filtering ???
+			{Type: "u16", Name: "src_port"},
+			{Type: "u16", Name: "dst_port"},
+			{Type: "ip32", Name: "src"},
+			{Type: "ip32", Name: "dst"},
+		},
+	},
 	NetPacketBase: {
 		id:       NetPacketBase,
 		id32Bit:  Sys32Undefined,
@@ -13105,8 +13133,8 @@ var CoreEvents = map[ID]Definition{
 				},
 			},
 			probes: []Probe{
-				{handle: probes.CgroupSKBIngress, required: true},
-				{handle: probes.CgroupSKBEgress, required: true},
+				{handle: probes.LegacyCgroupSKBEgress, required: true},
+				{handle: probes.LegacyCgroupSKBEgress, required: true},
 				{handle: probes.SockAllocFile, required: true},
 				{handle: probes.SockAllocFileRet, required: true},
 				{handle: probes.CgroupBPFRunFilterSKB, required: true},

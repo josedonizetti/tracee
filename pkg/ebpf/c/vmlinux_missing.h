@@ -265,5 +265,61 @@ static inline struct inet_sock *inet_sk(const struct sock *sk)
 #define IPPROTO_NONE     59  // IPv6 no next header
 #define IPPROTO_DSTOPTS  60  // IPv6 destination options
 #define IPPROTO_MH       135 // IPv6 mobility header
+			
+/* flags for BPF_MAP_CREATE command */
+enum {
+	BPF_F_NO_PREALLOC	= (1U << 0),
+/* Instead of having one common LRU list in the
+ * BPF_MAP_TYPE_LRU_[PERCPU_]HASH map, use a percpu LRU list
+ * which can scale and perform better.
+ * Note, the LRU nodes (including free nodes) cannot be moved
+ * across different LRU lists.
+ */
+	BPF_F_NO_COMMON_LRU	= (1U << 1),
+/* Specify numa node during map creation */
+	BPF_F_NUMA_NODE		= (1U << 2),
+
+/* Flags for accessing BPF object from syscall side. */
+	BPF_F_RDONLY		= (1U << 3),
+	BPF_F_WRONLY		= (1U << 4),
+
+/* Flag for stack_map, store build_id+offset instead of pointer */
+	BPF_F_STACK_BUILD_ID	= (1U << 5),
+
+/* Zero-initialize hash function seed. This should only be used for testing. */
+	BPF_F_ZERO_SEED		= (1U << 6),
+
+/* Flags for accessing BPF object from program side. */
+	BPF_F_RDONLY_PROG	= (1U << 7),
+	BPF_F_WRONLY_PROG	= (1U << 8),
+
+/* Clone map from listener for newly accepted socket */
+	BPF_F_CLONE		= (1U << 9),
+
+/* Enable memory-mapping BPF map */
+	BPF_F_MMAPABLE		= (1U << 10),
+
+/* Share perf_event among processes */
+	BPF_F_PRESERVE_ELEMS	= (1U << 11),
+
+/* Create a map that is suitable to be an inner map with dynamic max entries */
+	BPF_F_INNER_MAP		= (1U << 12),
+
+/* Create a map that will be registered/unregesitered by the backed bpf_link */
+	BPF_F_LINK		= (1U << 13),
+
+/* Get path from provided FD in BPF_OBJ_PIN/BPF_OBJ_GET commands */
+	BPF_F_PATH_FD		= (1U << 14),
+};
+
+enum {
+	BPF_LOCAL_STORAGE_GET_F_CREATE	= (1ULL << 0),
+	/* BPF_SK_STORAGE_GET_F_CREATE is only kept for backward compatibility
+	 * and BPF_LOCAL_STORAGE_GET_F_CREATE must be used instead.
+	 */
+	BPF_SK_STORAGE_GET_F_CREATE  = BPF_LOCAL_STORAGE_GET_F_CREATE,
+};
+
+
 
 #endif

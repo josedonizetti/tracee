@@ -104,6 +104,8 @@ const (
 	SecuritySocketRecvmsg
 	SecuritySocketSendmsg
 	CgroupBPFRunFilterSKB
+	LegacyCgroupSKBIngress
+	LegacyCgroupSKBEgress
 	CgroupSKBIngress
 	CgroupSKBEgress
 	DoMmap
@@ -138,4 +140,6 @@ const (
 	SignalSchedProcessFork
 	SignalSchedProcessExec
 	SignalSchedProcessExit
+	FentrySecuritySocketRecvmsg
+	FentrySecuritySocketSendmsg
 )

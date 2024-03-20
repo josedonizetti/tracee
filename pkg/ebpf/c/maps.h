@@ -318,6 +318,16 @@ struct signal_data_map {
 
 typedef struct signal_data_map signal_data_map_t;
 
+// net
+struct network_event_map {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, network_event_t);
+} network_event_map SEC(".maps");
+
+typedef struct network_event_map network_event_map_t;
+
 // logs count
 struct logs_count {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -635,5 +645,15 @@ struct signals {
 } signals SEC(".maps");
 
 typedef struct signals signals_t;
+
+// socket-local storage
+struct {
+    __uint(type, BPF_MAP_TYPE_SK_STORAGE);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+    __type(key, u32);
+    __type(value, socket_storage_t);
+} socket_local_storage SEC(".maps");
+
+typedef struct socket_local_storage socket_local_storage_t;
 
 #endif /* __MAPS_H__ */

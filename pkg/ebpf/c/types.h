@@ -51,6 +51,7 @@ enum event_id_e
     NET_PACKET_HTTP,
     NET_CAPTURE_BASE,
     NET_FLOW_BASE,
+    NET_POC,
     MAX_NET_EVENT_ID,
     // Common event IDs
     RAW_SYS_ENTER,
@@ -377,6 +378,12 @@ typedef struct controlplane_signal {
     args_buffer_t args_buf;
 } controlplane_signal_t;
 
+typedef struct network_event {
+    event_context_t eventctx;
+    // u8 argnum;
+    args_buffer_t args_buf;
+} network_event_t;
+
 #define MAX_EVENT_SIZE  sizeof(event_context_t) + sizeof(u8) + ARGS_BUF_SIZE
 #define MAX_SIGNAL_SIZE sizeof(u32) + sizeof(u8) + ARGS_BUF_SIZE
 
@@ -512,6 +519,12 @@ typedef struct kernel_deleted_mod {
 typedef struct rb_node_stack {
     struct rb_node *node;
 } rb_node_t;
+
+typedef struct socket_storage {
+    u32 host_tid;
+    u16 policies_version;
+    u64 matched_policies;
+} socket_storage_t;
 
 #define MODULE_SRCVERSION_MAX_LENGTH 25
 
