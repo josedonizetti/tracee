@@ -2,6 +2,7 @@ package flags
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -11,94 +12,140 @@ import (
 	"github.com/aquasecurity/tracee/common/logger"
 )
 
-func logHelp() string {
-	return `Control logger options - aggregation and level priority.
+const (
+	LoggingFlagShort    = "l"
+	LoggingFlag         = "logging"
+	DefaultLogLevelFlag = logLevel + "=" + logLevelInfo
 
-Possible options:
-  --log aggregate[:flush-interval]    | turns log aggregation on, delaying output with an optional interval (s, m) (default: 3s)
-  --log <debug|info|warn|error|panic> | set log level, info is the default
-  --log file:/path/to/file            | write the logs to a specified file. create/trim the file if exists (default: stderr)
-  --log filter:<option;...>           | Filters in logs that match the specified option values.
-  --log filter-out:<option;...>       | Filters out logs that match the specified option values.
+	logLevel                    = "level"
+	logLevelDebug               = "debug"
+	logLevelInfo                = "info"
+	logLevelWarn                = "warn"
+	logLevelError               = "error"
+	logLevelFatal               = "fatal"
+	logFile                     = "file"
+	logFilter                   = "filters"
+	logFilterInclude            = "include"
+	logFilterExclude            = "exclude"
+	logFilterLibbpf             = "libbpf"
+	logAggregation              = "aggregate"
+	logAggregationEnabled       = "enabled"
+	logAggregationFlushInterval = "flush-interval"
+)
 
-Filter options:
-  msg=<value,...> 				       | Filters logs that message contains a value.
-  regex=<value,...>                    | Filters logs that a regex matches the message.
-  pkg=<value,...>                      | Filters logs that originate from a package.
-  file=<value,...>                     | Filters logs that originate from a file.
-  lvl=<value,...>                      | Filters logs that are of a specific level.
-  libbpf                               | Filters logs that originate from libbpf.
+// LogConfig is the configuration for the logger.
+type LogConfig struct {
+	Level     string             `mapstructure:"level"`
+	File      string             `mapstructure:"file"`
+	Aggregate LogAggregateConfig `mapstructure:"aggregate"`
+	Filters   LogFilterConfig    `mapstructure:"filters"`
 
-Examples:
-  --log debug                                        | outputs debug level logs
-  --log debug --log aggregate                        | outputs aggregated debug level logs every 3 seconds (default)
-  --log aggregate:5s                                 | outputs aggregated logs every 5 seconds
-  --log debug --log file:/tmp/tracee.log             | outputs debug level logs to /tmp/tracee.log
-  --log filter:'msg=foo,bar;pkg=core;lvl=error'      | Filters in logs that have either 'foo' or 'bar' in the message, are from the 'core' package, and are of 'error' level.
-  --log filter-out:'msg=foo,bar;pkg=core;lvl=error'  | Filters out logs that have either 'foo' or 'bar' in the message, are from the 'core' package, and are of 'error' level.
-  --log filter:msg=foo,bar --log filter-out:pkg=core | Filters in logs that have either 'foo' or 'bar' in the message, and based on that result, filters out logs that are from the 'core' package.
-  --log filter-out:file=/pkg/cmd/flags/logger.go	 | Filters out logs that are from the '/pkg/cmd/flags/logger.go' file.
-  --log filter:regex='^foo'                          | Filters in logs that messages match the regex '^foo'.
-  --log filter:libbpf                                | Filters in logs that originate from libbpf.
-`
+	loggerCfg     logger.LoggerConfig
+	filter        logger.LoggerFilter
+	aggregate     bool
+	flushInterval time.Duration
 }
 
-func invalidLogOption(err error, opt string) error {
-	if err == nil {
-		// this is a hack to clear the previous two chars from the error message
-		err = errors.New("\b\b")
-	}
-
-	return errfmt.Errorf("invalid log option: %s, %s, run 'tracee man log' for more info", opt, err)
+// LogAggregateConfig is the configuration for the log aggregation.
+type LogAggregateConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	FlushInterval string `mapstructure:"flush-interval"`
 }
 
-func invalidLogOptionValue(err error, opt string) error {
-	if err == nil {
-		// this is a hack to clear the previous two chars from the error message
-		err = errors.New("\b\b")
-	}
-
-	return errfmt.Errorf("invalid log option value: %s, %s, use '--help' for more info", opt, err)
+// LogFilterConfig is the configuration for the log filters.
+type LogFilterConfig struct {
+	Include LogFilterAttributes `mapstructure:"include"`
+	Exclude LogFilterAttributes `mapstructure:"exclude"`
 }
 
-func parseLevel(level string) (logger.Level, error) {
-	switch level {
-	case "debug":
-		return logger.DebugLevel, nil
-	case "info":
-		return logger.InfoLevel, nil
-	case "warn":
-		return logger.WarnLevel, nil
-	case "error":
-		return logger.ErrorLevel, nil
-	case "fatal":
-		return logger.FatalLevel, nil
-	default:
-		return logger.DebugLevel, errors.New("invalid log level")
+// LogFilterAttributes is the attributes for the log filters.
+type LogFilterAttributes struct {
+	Msg    []string `mapstructure:"msg"`
+	Pkg    []string `mapstructure:"pkg"`
+	File   []string `mapstructure:"file"`
+	Level  []string `mapstructure:"level"`
+	Regex  []string `mapstructure:"regex"`
+	LibBPF bool     `mapstructure:"libbpf"`
+}
+
+// GetLoggerConfig returns the logger configuration.
+func (l *LogConfig) GetLoggingConfig() logger.LoggingConfig {
+	return logger.LoggingConfig{
+		Logger:        logger.NewLogger(l.loggerCfg),
+		LoggerConfig:  l.loggerCfg,
+		Filter:        l.filter,
+		Aggregate:     l.aggregate,
+		FlushInterval: l.flushInterval,
 	}
 }
 
-func validateLogOption(opt string) error {
-	switch {
-	case strings.HasPrefix(opt, "file"):
-		return nil
-	case strings.HasPrefix(opt, "aggregate"):
-		return nil
-	case strings.HasPrefix(opt, "filter-out"):
-		return nil
-	case strings.HasPrefix(opt, "filter"):
-		return nil
+// flags returns the flags for the log configuration.
+func (l *LogConfig) flags() []string {
+	flags := []string{}
+
+	// level
+	if l.Level != "" {
+		flags = append(flags, fmt.Sprintf("%s=%s", logLevel, l.Level))
 	}
 
-	if _, err := parseLevel(opt); err == nil {
-		return nil
+	// file
+	if l.File != "" {
+		flags = append(flags, fmt.Sprintf("%s=%s", logFile, l.File))
 	}
 
-	// don't pass the error, it's not relevant in this case
-	return invalidLogOption(nil, opt)
+	// aggregate
+	if l.Aggregate.Enabled {
+		flags = append(flags, fmt.Sprintf("%s.enabled", logAggregation))
+	}
+	if l.Aggregate.FlushInterval != "" {
+		flags = append(flags, fmt.Sprintf("%s.%s=%s", logAggregation, logAggregationFlushInterval, l.Aggregate.FlushInterval))
+	}
+
+	// filters
+	flags = append(flags, getLogFilterAttrFlags(logFilterInclude, l.Filters.Include)...)
+	flags = append(flags, getLogFilterAttrFlags(logFilterExclude, l.Filters.Exclude)...)
+
+	return flags
 }
 
-func PrepareLogger(logOptions []string) (logger.LoggingConfig, error) {
+// getLogFilterAttrFlags returns the flags for the log filter attributes.
+func getLogFilterAttrFlags(option string, attrs LogFilterAttributes) []string {
+	attrFlags := []string{}
+
+	// msg
+	for _, msg := range attrs.Msg {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.msg=%s", logFilter, option, msg))
+	}
+
+	// pkg
+	for _, pkg := range attrs.Pkg {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.pkg=%s", logFilter, option, pkg))
+	}
+
+	// file
+	for _, file := range attrs.File {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.file=%s", logFilter, option, file))
+	}
+
+	// level
+	for _, level := range attrs.Level {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.level=%s", logFilter, option, level))
+	}
+
+	// regex
+	for _, regex := range attrs.Regex {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.regex=%s", logFilter, option, regex))
+	}
+	// libbpf
+	if attrs.LibBPF {
+		attrFlags = append(attrFlags, fmt.Sprintf("%s.%s.libbpf", logFilter, option))
+	}
+
+	return attrFlags
+}
+
+// PrepareLogger prepares the logger configuration from the log options.
+func PrepareLogger(logOptions []string) (LogConfig, error) {
 	var (
 		agg           bool
 		filter        = logger.NewLoggerFilter()
@@ -109,160 +156,103 @@ func PrepareLogger(logOptions []string) (logger.LoggingConfig, error) {
 	)
 
 	for _, opt := range logOptions {
-		if err := validateLogOption(opt); err != nil {
-			return logger.LoggingConfig{}, err
-		}
-
-		// parse file option
-		if strings.HasPrefix(opt, "file") {
-			vals := strings.Split(opt, ":")
-
-			if len(vals) == 1 || vals[1] == "" {
-				return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
+		// Check if this is a level or file option first (they use "=" syntax)
+		if strings.HasPrefix(opt, logLevel+"=") || strings.HasPrefix(opt, logFile+"=") {
+			// split by "=" for level and file options
+			logParts := strings.SplitN(opt, "=", 2)
+			if len(logParts) != 2 {
+				return LogConfig{}, invalidLogOption(nil, opt)
 			}
 
-			w, err = CreateOutputFile(vals[1])
-			if err != nil {
-				return logger.LoggingConfig{}, err
+			switch logParts[0] {
+			case logLevel:
+				lvl, err = parseLevel(logParts[1])
+				if err != nil {
+					return LogConfig{}, invalidLogOptionValue(err, opt)
+				}
+			case logFile:
+				if logParts[1] == "" {
+					return LogConfig{}, invalidLogOptionValue(nil, opt)
+				}
+				w, err = CreateOutputFile(logParts[1])
+				if err != nil {
+					return LogConfig{}, err
+				}
 			}
-
 			continue
 		}
 
-		// parse aggregate option
-		if strings.HasPrefix(opt, "aggregate") {
-			if !strings.HasSuffix(opt, "aggregate") {
-				vals := strings.Split(opt, ":")
-				if len(vals) != 2 || len(vals[1]) <= 1 {
-					return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
+		// For other options, split by "." for filter and aggregation
+		logParts := strings.SplitN(opt, ".", 2)
+		if len(logParts) < 2 {
+			return LogConfig{}, invalidLogOption(nil, opt)
+		}
+
+		switch logParts[0] {
+		case logAggregation:
+			aggregationParts := strings.SplitN(logParts[1], "=", 2)
+
+			switch aggregationParts[0] {
+			case logAggregationFlushInterval:
+
+				if len(aggregationParts) != 2 {
+					return LogConfig{}, invalidLogOption(nil, opt)
+				}
+
+				if len(aggregationParts[1]) <= 1 {
+					return LogConfig{}, invalidLogOptionValue(nil, opt)
 				}
 
 				// handle only seconds and minutes
-				timeSuffix := vals[1][len(vals[1])-1:][0]
+				timeSuffix := aggregationParts[1][len(aggregationParts[1])-1:][0]
 				if timeSuffix != 's' && timeSuffix != 'm' {
-					return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
+					return LogConfig{}, invalidLogOptionValue(nil, opt)
 				}
-				prevByte := vals[1][len(vals[1])-2:][0]
+				prevByte := aggregationParts[1][len(aggregationParts[1])-2:][0]
 				if timeSuffix == 's' && !unicode.IsDigit(rune(prevByte)) {
-					return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
+					return LogConfig{}, invalidLogOptionValue(nil, opt)
 				}
 
-				flushInterval, err = time.ParseDuration(vals[1])
+				flushInterval, err = time.ParseDuration(aggregationParts[1])
 				if err != nil {
-					return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
+					return LogConfig{}, invalidLogOptionValue(nil, opt)
 				}
+
+			case logAggregationEnabled:
+				// if aggregationParts[1] != "" {
+				// 	return LogConfig{}, invalidLogOptionValue(nil, opt)
+				// }
+				agg = true
+			default:
+				return LogConfig{}, invalidLogOption(nil, opt)
 			}
 
-			agg = true
-			continue
-		}
-
-		// parse filter option
-		filterOpts := ""
-		var filterKind logger.FilterKind
-		if strings.HasPrefix(opt, "filter-out:") {
-			filterOpts = strings.TrimPrefix(opt, "filter-out:")
-			filterKind = logger.FilterOut
-		} else if strings.HasPrefix(opt, "filter:") {
-			filterOpts = strings.TrimPrefix(opt, "filter:")
-			filterKind = logger.FilterIn
-		}
-		if filterOpts != "" {
-			for _, filterOpt := range strings.Split(filterOpts, ";") {
-				optTypeVal := strings.SplitN(filterOpt, "=", 2)
-				optType := optTypeVal[0]
-				optVals := []string{}
-				if len(optTypeVal) == 1 && optType != "libbpf" {
-					return logger.LoggingConfig{}, invalidLogOption(nil, opt)
-				}
-				if len(optTypeVal) == 2 {
-					if optTypeVal[1] == "" {
-						return logger.LoggingConfig{}, invalidLogOptionValue(nil, opt)
-					}
-					optVals = strings.Split(optTypeVal[1], ",")
-				}
-
-				switch optType {
-				case "msg":
-					for _, val := range optVals {
-						if err := filter.AddMsg(val, filterKind); err != nil {
-							if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-								logger.Warnw(err.Error(), "msg", val)
-								continue
-							}
-
-							return logger.LoggingConfig{}, invalidLogOption(err, opt)
-						}
-					}
-				case "pkg":
-					for _, val := range optVals {
-						if err := filter.AddPkg(val, filterKind); err != nil {
-							if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-								logger.Warnw(err.Error(), "pkg", val)
-								continue
-							}
-
-							return logger.LoggingConfig{}, invalidLogOption(err, opt)
-						}
-					}
-				case "file":
-					for _, val := range optVals {
-						if err := filter.AddFile(val, filterKind); err != nil {
-							if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-								logger.Warnw(err.Error(), "file", val)
-								continue
-							}
-
-							return logger.LoggingConfig{}, invalidLogOption(err, opt)
-						}
-					}
-				case "lvl":
-					for _, val := range optVals {
-						filterLvl, err := parseLevel(val)
-						if err != nil {
-							return logger.LoggingConfig{}, invalidLogOptionValue(err, opt)
-						}
-
-						if err := filter.AddLvl(int(filterLvl), filterKind); err != nil {
-							if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-								logger.Warnw(err.Error(), "lvl", val)
-								continue
-							}
-
-							return logger.LoggingConfig{}, invalidLogOptionValue(err, opt)
-						}
-					}
-				case "regex":
-					for _, val := range optVals {
-						if err := filter.AddMsgRegex(val, filterKind); err != nil {
-							if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-								logger.Warnw(err.Error(), "regex", val)
-								continue
-							}
-
-							return logger.LoggingConfig{}, invalidLogOptionValue(err, opt)
-						}
-					}
-				case "libbpf":
-					if err := filter.AddMsgRegex("^libbpf:", filterKind); err != nil {
-						if errors.Is(err, logger.ErrFilterOutExistsForKey) {
-							logger.Warnw(err.Error(), "regex", "^libbpf:")
-							continue
-						}
-
-						return logger.LoggingConfig{}, invalidLogOptionValue(err, opt)
-					}
-				default:
-					return logger.LoggingConfig{}, invalidLogOption(nil, opt)
-				}
+		case logFilter:
+			filterParts := strings.SplitN(logParts[1], ".", 2)
+			if len(filterParts) != 2 {
+				return LogConfig{}, invalidLogOption(nil, opt)
 			}
-			continue
-		}
+			var filterKind logger.FilterKind
+			switch filterParts[0] {
+			case logFilterInclude:
+				filterKind = logger.FilterIn
+			case logFilterExclude:
+				filterKind = logger.FilterOut
+			default:
+				return LogConfig{}, invalidLogOptionValue(nil, opt)
+			}
 
-		// parse level option
-		lvl, err = parseLevel(opt)
-		if err != nil {
-			return logger.LoggingConfig{}, invalidLogOption(err, opt)
+			filterOpt := filterParts[1]
+			if filterOpt == "" {
+				return LogConfig{}, invalidLogOption(nil, opt)
+			}
+
+			err = processLogFilter(&filter, opt, filterKind, filterOpt)
+			if err != nil {
+				return LogConfig{}, err
+			}
+		default:
+			return LogConfig{}, invalidLogOption(nil, opt)
 		}
 	}
 
@@ -276,12 +266,138 @@ func PrepareLogger(logOptions []string) (logger.LoggingConfig, error) {
 		loggerCfg.Encoder = logger.NewJSONEncoder(logger.NewProductionEncoderConfig())
 	}
 
-	llogger := logger.NewLogger(loggerCfg)
-	return logger.LoggingConfig{
-		Logger:        llogger,
-		LoggerConfig:  loggerCfg,
-		Filter:        filter,
-		Aggregate:     agg,
-		FlushInterval: flushInterval,
+	return LogConfig{
+		loggerCfg:     loggerCfg,
+		filter:        filter,
+		aggregate:     agg,
+		flushInterval: flushInterval,
 	}, nil
+}
+
+// processLogFilter processes the log filter option.
+func processLogFilter(filter *logger.LoggerFilter, opt string, filterKind logger.FilterKind, filterOpt string) error {
+	optTypeParts := strings.SplitN(filterOpt, "=", 2)
+	optType := optTypeParts[0]
+	optVals := []string{}
+	if len(optTypeParts) == 1 && optType != "libbpf" {
+		return invalidLogOption(nil, opt)
+	}
+	if len(optTypeParts) == 2 {
+		if optTypeParts[1] == "" {
+			return invalidLogOptionValue(nil, opt)
+		}
+		optVals = strings.Split(optTypeParts[1], ",")
+	}
+
+	switch optType {
+	case "msg":
+		for _, val := range optVals {
+			if err := filter.AddMsg(val, filterKind); err != nil {
+				if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+					logger.Warnw(err.Error(), "msg", val)
+					continue
+				}
+
+				return invalidLogOption(err, opt)
+			}
+		}
+	case "pkg":
+		for _, val := range optVals {
+			if err := filter.AddPkg(val, filterKind); err != nil {
+				if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+					logger.Warnw(err.Error(), "pkg", val)
+					continue
+				}
+
+				return invalidLogOption(err, opt)
+			}
+		}
+	case "file":
+		for _, val := range optVals {
+			if err := filter.AddFile(val, filterKind); err != nil {
+				if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+					logger.Warnw(err.Error(), "file", val)
+					continue
+				}
+
+				return invalidLogOption(err, opt)
+			}
+		}
+	case "level":
+		for _, val := range optVals {
+			filterLvl, err := parseLevel(val)
+			if err != nil {
+				return invalidLogOptionValue(err, opt)
+			}
+
+			if err := filter.AddLvl(int(filterLvl), filterKind); err != nil {
+				if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+					logger.Warnw(err.Error(), "level", val)
+					continue
+				}
+
+				return invalidLogOptionValue(err, opt)
+			}
+		}
+	case "regex":
+		for _, val := range optVals {
+			if err := filter.AddMsgRegex(val, filterKind); err != nil {
+				if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+					logger.Warnw(err.Error(), "regex", val)
+					continue
+				}
+
+				return invalidLogOption(err, opt)
+			}
+		}
+	case "libbpf":
+		if err := filter.AddMsgRegex("^libbpf:", filterKind); err != nil {
+			if errors.Is(err, logger.ErrFilterOutExistsForKey) {
+				logger.Warnw(err.Error(), "regex", "^libbpf:")
+				return nil
+			}
+			return invalidLogOptionValue(err, opt)
+		}
+	default:
+		return invalidLogOption(nil, opt)
+	}
+	return nil
+}
+
+// invalidLogOption returns an error for an invalid log option.
+func invalidLogOption(err error, opt string) error {
+	if err == nil {
+		// this is a hack to clear the previous two chars from the error message
+		err = errors.New("\b\b")
+	}
+
+	return errfmt.Errorf("invalid log option: %s, %s, run 'tracee man logging' for more info", opt, err)
+}
+
+// invalidLogOptionValue returns an error for an invalid log option value.
+func invalidLogOptionValue(err error, opt string) error {
+	if err == nil {
+		// this is a hack to clear the previous two chars from the error message
+		err = errors.New("\b\b")
+	}
+
+	return errfmt.Errorf("invalid log option value: %s, %s, use '--help' for more info", opt, err)
+}
+
+// parseLevel parses the log level.
+func parseLevel(level string) (logger.Level, error) {
+	switch level {
+	case logLevelDebug:
+		return logger.DebugLevel, nil
+	case logLevelInfo:
+		return logger.InfoLevel, nil
+	case logLevelWarn:
+		return logger.WarnLevel, nil
+	case logLevelError:
+		return logger.ErrorLevel, nil
+	case logLevelFatal:
+		return logger.FatalLevel, nil
+	default:
+		return logger.DebugLevel, errors.New("invalid log level")
+	}
 }
