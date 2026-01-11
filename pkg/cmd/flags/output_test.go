@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/aquasecurity/tracee/common/digest"
 	"github.com/aquasecurity/tracee/pkg/config"
 )
 
@@ -298,68 +297,24 @@ func TestPrepareOutput(t *testing.T) {
 		},
 		// options
 		{
-			testName:    "option stack-addresses",
-			outputSlice: []string{"option:stack-addresses"},
-			expectedOutput: config.OutputConfig{
-				StackAddresses: true,
-				ParseArguments: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdouttable", Type: "file", Format: "table", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option stack-addresses (moved to enrichment)",
+			outputSlice:   []string{"option:stack-addresses"},
+			expectedError: InvalidOutputOptionError("stack-addresses"),
 		},
 		{
-			testName:    "option exec-env",
-			outputSlice: []string{"option:exec-env"},
-			expectedOutput: config.OutputConfig{
-				ExecEnv:        true,
-				ParseArguments: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdouttable", Type: "file", Format: "table", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option exec-env (moved to enrichment)",
+			outputSlice:   []string{"option:exec-env"},
+			expectedError: InvalidOutputOptionError("exec-env"),
 		},
 		{
-			testName:    "option exec-hash",
-			outputSlice: []string{"option:exec-hash"},
-			expectedOutput: config.OutputConfig{
-				CalcHashes:     digest.CalcHashesDevInode,
-				ParseArguments: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdouttable", Type: "file", Format: "table", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option exec-hash (moved to enrichment)",
+			outputSlice:   []string{"option:exec-hash"},
+			expectedError: InvalidOutputOptionError("exec-hash"),
 		},
 		{
-			testName:    "option exec-hash=inode",
-			outputSlice: []string{"option:exec-hash=inode"},
-			expectedOutput: config.OutputConfig{
-				CalcHashes:     digest.CalcHashesInode,
-				ParseArguments: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdouttable", Type: "file", Format: "table", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option exec-hash=inode (moved to enrichment)",
+			outputSlice:   []string{"option:exec-hash=inode"},
+			expectedError: InvalidOutputOptionError("exec-hash=inode"),
 		},
 		{
 			testName:      "option exec-hash invalid",
@@ -372,35 +327,14 @@ func TestPrepareOutput(t *testing.T) {
 			expectedError: InvalidOutputOptionError("exec-hasha"),
 		},
 		{
-			testName:    "option parse-arguments",
-			outputSlice: []string{"json", "option:parse-arguments"},
-			expectedOutput: config.OutputConfig{
-				ParseArguments: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdoutjson", Type: "file", Format: "json", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option parse-arguments (moved to enrichment)",
+			outputSlice:   []string{"json", "option:parse-arguments"},
+			expectedError: InvalidOutputOptionError("parse-arguments"),
 		},
 		{
-			testName:    "option parse-arguments-fds",
-			outputSlice: []string{"json", "option:parse-arguments-fds"},
-			expectedOutput: config.OutputConfig{
-				ParseArguments:    true,
-				ParseArgumentsFDs: true,
-				Streams: []config.Stream{
-					{
-						Name: "default-stream",
-						Destinations: []config.Destination{
-							{Name: "stdoutjson", Type: "file", Format: "json", Path: "stdout"},
-						},
-					},
-				},
-			},
+			testName:      "option parse-arguments-fds (moved to enrichment)",
+			outputSlice:   []string{"json", "option:parse-arguments-fds"},
+			expectedError: InvalidOutputOptionError("parse-arguments-fds"),
 		},
 		{
 			testName:    "option sort-events",
@@ -419,23 +353,13 @@ func TestPrepareOutput(t *testing.T) {
 			},
 		},
 		{
-			testName: "all options",
+			testName: "all valid output options",
 			outputSlice: []string{
 				"json",
-				"option:stack-addresses",
-				"option:exec-env",
-				"option:exec-hash=dev-inode",
-				"option:parse-arguments",
-				"option:parse-arguments-fds",
 				"option:sort-events",
 			},
 			expectedOutput: config.OutputConfig{
-				StackAddresses:    true,
-				ExecEnv:           true,
-				CalcHashes:        digest.CalcHashesDevInode,
-				ParseArguments:    true,
-				ParseArgumentsFDs: true,
-				EventsSorting:     true,
+				EventsSorting: true,
 				Streams: []config.Stream{
 					{
 						Name: "default-stream",
@@ -829,51 +753,6 @@ func TestOutputConfig_flags(t *testing.T) {
 			expected: []string{"none"},
 		},
 		{
-			name: "stack-addresses option only",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					StackAddresses: true,
-				},
-			},
-			expected: []string{"option:stack-addresses"},
-		},
-		{
-			name: "exec-env option only",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					ExecEnv: true,
-				},
-			},
-			expected: []string{"option:exec-env"},
-		},
-		{
-			name: "exec-hash option only",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					ExecHash: "dev-inode",
-				},
-			},
-			expected: []string{"option:exec-hash=dev-inode"},
-		},
-		{
-			name: "parse-arguments option only",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					ParseArguments: true,
-				},
-			},
-			expected: []string{"option:parse-arguments"},
-		},
-		{
-			name: "parse-arguments-fds option only",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					ParseArgumentsFDs: true,
-				},
-			},
-			expected: []string{"option:parse-arguments-fds"},
-		},
-		{
 			name: "sort-events option only",
 			config: OutputConfig{
 				Options: OutputOptsConfig{
@@ -886,22 +765,12 @@ func TestOutputConfig_flags(t *testing.T) {
 			name: "all options",
 			config: OutputConfig{
 				Options: OutputOptsConfig{
-					None:              true,
-					StackAddresses:    true,
-					ExecEnv:           true,
-					ExecHash:          "inode",
-					ParseArguments:    true,
-					ParseArgumentsFDs: true,
-					SortEvents:        true,
+					None:       true,
+					SortEvents: true,
 				},
 			},
 			expected: []string{
 				"none",
-				"option:stack-addresses",
-				"option:exec-env",
-				"option:exec-hash=inode",
-				"option:parse-arguments",
-				"option:parse-arguments-fds",
 				"option:sort-events",
 			},
 		},
@@ -1124,11 +993,6 @@ func TestOutputConfig_flags(t *testing.T) {
 		{
 			name: "all components",
 			config: OutputConfig{
-				Options: OutputOptsConfig{
-					StackAddresses: true,
-					ExecEnv:        true,
-					ExecHash:       "dev-inode",
-				},
 				Destinations: []DestinationsConfig{
 					{
 						Name:   "d1",
@@ -1152,9 +1016,6 @@ func TestOutputConfig_flags(t *testing.T) {
 				},
 			},
 			expected: []string{
-				"option:stack-addresses",
-				"option:exec-env",
-				"option:exec-hash=dev-inode",
 				"destinations.d1.format=json",
 				"destinations.d1.type=file",
 				"destinations.d1.path=/tmp/output",
@@ -1163,15 +1024,6 @@ func TestOutputConfig_flags(t *testing.T) {
 				"streams.s1.buffer.mode=block",
 				"streams.s1.buffer.size=1024",
 			},
-		},
-		{
-			name: "empty exec-hash should not generate flag",
-			config: OutputConfig{
-				Options: OutputOptsConfig{
-					ExecHash: "",
-				},
-			},
-			expected: []string{},
 		},
 	}
 
