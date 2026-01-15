@@ -80,62 +80,62 @@ func TestEnrichmentConfig_flags(t *testing.T) {
 			},
 		},
 		{
-			name: "resolve-fd enabled",
+			name: "fd-paths enabled",
 			config: EnrichmentConfig{
 				ResolveFd: true,
 			},
 			expected: []string{
-				"resolve-fd",
+				"fd-paths",
 			},
 		},
 		{
-			name: "exec-hash enabled",
+			name: "executable-hash enabled",
 			config: EnrichmentConfig{
 				ExecHash: ExecHashConfig{
 					Enabled: true,
 				},
 			},
 			expected: []string{
-				"exec-hash",
+				"executable-hash",
 			},
 		},
 		{
-			name: "exec-hash mode",
+			name: "executable-hash mode",
 			config: EnrichmentConfig{
 				ExecHash: ExecHashConfig{
 					Mode: "dev-inode",
 				},
 			},
 			expected: []string{
-				"exec-hash",
-				"exec-hash.mode=dev-inode",
+				"executable-hash",
+				"executable-hash.mode=dev-inode",
 			},
 		},
 		{
-			name: "user-stack-trace enabled",
+			name: "user-stack enabled",
 			config: EnrichmentConfig{
 				UserStackTrace: true,
 			},
 			expected: []string{
-				"user-stack-trace",
+				"user-stack",
 			},
 		},
 		{
-			name: "exec-env enabled",
+			name: "environment enabled",
 			config: EnrichmentConfig{
 				ExecEnv: true,
 			},
 			expected: []string{
-				"exec-env",
+				"environment",
 			},
 		},
 		{
-			name: "parse-arguments enabled",
+			name: "decoded-data enabled",
 			config: EnrichmentConfig{
 				ParseArguments: true,
 			},
 			expected: []string{
-				"parse-arguments",
+				"decoded-data",
 			},
 		},
 		{
@@ -169,12 +169,12 @@ func TestEnrichmentConfig_flags(t *testing.T) {
 				"container.containerd.socket=/var/run/containerd/containerd.sock",
 				"container.crio.socket=/var/run/crio/crio.sock",
 				"container.podman.socket=/var/run/podman/podman.sock",
-				"resolve-fd",
-				"exec-env",
-				"exec-hash",
-				"exec-hash.mode=dev-inode",
-				"user-stack-trace",
-				"parse-arguments",
+				"fd-paths",
+				"environment",
+				"executable-hash",
+				"executable-hash.mode=dev-inode",
+				"user-stack",
+				"decoded-data",
 			},
 		},
 		{
@@ -189,7 +189,7 @@ func TestEnrichmentConfig_flags(t *testing.T) {
 			expected: []string{
 				"container",
 				"container.docker.socket=/var/run/docker.sock",
-				"resolve-fd",
+				"fd-paths",
 			},
 		},
 	}
@@ -302,18 +302,18 @@ func TestPrepareEnrichment(t *testing.T) {
 				},
 			},
 		},
-		// valid single resolve-fd flags
+		// valid single fd-paths flags
 		{
-			testName: "valid resolve-fd",
-			flags:    []string{"resolve-fd"},
+			testName: "valid fd-paths",
+			flags:    []string{"fd-paths"},
 			expectedReturn: EnrichmentConfig{
 				ResolveFd: true,
 			},
 		},
-		// valid single exec-hash flags
+		// valid single executable-hash flags
 		{
-			testName: "valid exec-hash",
-			flags:    []string{"exec-hash"},
+			testName: "valid executable-hash",
+			flags:    []string{"executable-hash"},
 			expectedReturn: EnrichmentConfig{
 				ExecHash: ExecHashConfig{
 					Enabled: true,
@@ -321,35 +321,35 @@ func TestPrepareEnrichment(t *testing.T) {
 			},
 		},
 		{
-			testName: "valid exec-hash.mode",
-			flags:    []string{"exec-hash.mode=dev-inode"},
+			testName: "valid executable-hash.mode",
+			flags:    []string{"executable-hash.mode=dev-inode"},
 			expectedReturn: EnrichmentConfig{
 				ExecHash: ExecHashConfig{
-					Enabled: true, // Setting mode enables exec-hash
+					Enabled: true, // Setting mode enables executable-hash
 					Mode:    "dev-inode",
 				},
 			},
 		},
-		// valid single user-stack-trace flags
+		// valid single user-stack flags
 		{
-			testName: "valid user-stack-trace",
-			flags:    []string{"user-stack-trace"},
+			testName: "valid user-stack",
+			flags:    []string{"user-stack"},
 			expectedReturn: EnrichmentConfig{
 				UserStackTrace: true,
 			},
 		},
-		// valid single exec-env flags
+		// valid single environment flags
 		{
-			testName: "valid exec-env",
-			flags:    []string{"exec-env"},
+			testName: "valid environment",
+			flags:    []string{"environment"},
 			expectedReturn: EnrichmentConfig{
 				ExecEnv: true,
 			},
 		},
-		// valid single parse-arguments flags
+		// valid single decoded-data flags
 		{
-			testName: "valid parse-arguments",
-			flags:    []string{"parse-arguments"},
+			testName: "valid decoded-data",
+			flags:    []string{"decoded-data"},
 			expectedReturn: EnrichmentConfig{
 				ParseArguments: true,
 			},
@@ -383,7 +383,7 @@ func TestPrepareEnrichment(t *testing.T) {
 		},
 		{
 			testName: "valid all flags",
-			flags:    []string{"container", "container.cgroupfs.path=/host/sys/fs/cgroup", "container.cgroupfs.force", "container.docker.socket=/var/run/docker.sock", "container.containerd.socket=/var/run/containerd/containerd.sock", "container.crio.socket=/var/run/crio/crio.sock", "container.podman.socket=/var/run/podman/podman.sock", "resolve-fd", "exec-env", "exec-hash", "exec-hash.mode=dev-inode", "user-stack-trace", "parse-arguments"},
+			flags:    []string{"container", "container.cgroupfs.path=/host/sys/fs/cgroup", "container.cgroupfs.force", "container.docker.socket=/var/run/docker.sock", "container.containerd.socket=/var/run/containerd/containerd.sock", "container.crio.socket=/var/run/crio/crio.sock", "container.podman.socket=/var/run/podman/podman.sock", "fd-paths", "environment", "executable-hash", "executable-hash.mode=dev-inode", "user-stack", "decoded-data"},
 			expectedReturn: EnrichmentConfig{
 				Container: ContainerEnrichmentConfig{
 					Enabled: true,
@@ -408,7 +408,7 @@ func TestPrepareEnrichment(t *testing.T) {
 		},
 		{
 			testName: "valid flags in different order",
-			flags:    []string{"user-stack-trace", "container.cgroupfs.path=/host/sys/fs/cgroup", "exec-hash.mode=sha256", "container", "resolve-fd"},
+			flags:    []string{"user-stack", "container.cgroupfs.path=/host/sys/fs/cgroup", "executable-hash.mode=sha256", "container", "fd-paths"},
 			expectedReturn: EnrichmentConfig{
 				Container: ContainerEnrichmentConfig{
 					Enabled: true, // Setting cgroupfs.path enables container
@@ -418,7 +418,7 @@ func TestPrepareEnrichment(t *testing.T) {
 				},
 				ResolveFd: true,
 				ExecHash: ExecHashConfig{
-					Enabled: true, // Setting mode enables exec-hash
+					Enabled: true, // Setting mode enables executable-hash
 					Mode:    "sha256",
 				},
 				UserStackTrace: true,
@@ -455,34 +455,34 @@ func TestPrepareEnrichment(t *testing.T) {
 			expectedError:  invalidEnrichmentFlagError("container=true"),
 		},
 		{
-			testName:       "invalid boolean flag resolve-fd with =true",
-			flags:          []string{"resolve-fd=true"},
+			testName:       "invalid boolean flag fd-paths with =true",
+			flags:          []string{"fd-paths=true"},
 			expectedReturn: EnrichmentConfig{},
-			expectedError:  invalidEnrichmentFlagError("resolve-fd=true"),
+			expectedError:  invalidEnrichmentFlagError("fd-paths=true"),
 		},
 		{
-			testName:       "invalid boolean flag exec-hash with =true",
-			flags:          []string{"exec-hash=true"},
+			testName:       "invalid boolean flag executable-hash with =true",
+			flags:          []string{"executable-hash=true"},
 			expectedReturn: EnrichmentConfig{},
-			expectedError:  invalidEnrichmentFlagError("exec-hash=true"),
+			expectedError:  invalidEnrichmentFlagError("executable-hash=true"),
 		},
 		{
-			testName:       "invalid boolean flag user-stack-trace with =true",
-			flags:          []string{"user-stack-trace=true"},
+			testName:       "invalid boolean flag user-stack with =true",
+			flags:          []string{"user-stack=true"},
 			expectedReturn: EnrichmentConfig{},
-			expectedError:  invalidEnrichmentFlagError("user-stack-trace=true"),
+			expectedError:  invalidEnrichmentFlagError("user-stack=true"),
 		},
 		{
-			testName:       "invalid boolean flag exec-env with =true",
-			flags:          []string{"exec-env=true"},
+			testName:       "invalid boolean flag environment with =true",
+			flags:          []string{"environment=true"},
 			expectedReturn: EnrichmentConfig{},
-			expectedError:  invalidEnrichmentFlagError("exec-env=true"),
+			expectedError:  invalidEnrichmentFlagError("environment=true"),
 		},
 		{
-			testName:       "invalid boolean flag parse-arguments with =true",
-			flags:          []string{"parse-arguments=true"},
+			testName:       "invalid boolean flag decoded-data with =true",
+			flags:          []string{"decoded-data=true"},
 			expectedReturn: EnrichmentConfig{},
-			expectedError:  invalidEnrichmentFlagError("parse-arguments=true"),
+			expectedError:  invalidEnrichmentFlagError("decoded-data=true"),
 		},
 		{
 			testName:       "invalid boolean flag container.cgroupfs.force with =true",
@@ -506,7 +506,7 @@ func TestPrepareEnrichment(t *testing.T) {
 		// valid edge cases
 		{
 			testName: "valid empty string values",
-			flags:    []string{"container.cgroupfs.path=", "exec-hash.mode="},
+			flags:    []string{"container.cgroupfs.path=", "executable-hash.mode="},
 			expectedReturn: EnrichmentConfig{
 				Container: ContainerEnrichmentConfig{
 					Enabled: true, // Setting cgroupfs.path enables container
@@ -515,7 +515,7 @@ func TestPrepareEnrichment(t *testing.T) {
 					},
 				},
 				ExecHash: ExecHashConfig{
-					Enabled: true, // Setting mode enables exec-hash
+					Enabled: true, // Setting mode enables executable-hash
 					Mode:    "",
 				},
 			},
@@ -544,11 +544,11 @@ func TestPrepareEnrichment(t *testing.T) {
 			},
 		},
 		{
-			testName: "valid exec-hash.mode values",
-			flags:    []string{"exec-hash.mode=sha256"},
+			testName: "valid executable-hash.mode values",
+			flags:    []string{"executable-hash.mode=sha256"},
 			expectedReturn: EnrichmentConfig{
 				ExecHash: ExecHashConfig{
-					Enabled: true, // Setting mode enables exec-hash
+					Enabled: true, // Setting mode enables executable-hash
 					Mode:    "sha256",
 				},
 			},

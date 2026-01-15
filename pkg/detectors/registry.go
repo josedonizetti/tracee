@@ -279,7 +279,7 @@ func (r *registry) RegisterDetector(
 				// Parse requested mode string to enum
 				requestedMode := parseHashMode(enrichReq.Config)
 				if requestedMode == digest.CalcHashesNone {
-					return fmt.Errorf("detector %s requires invalid exec-hash mode: %s", detectorID, enrichReq.Config)
+					return fmt.Errorf("detector %s requires invalid executable-hash mode: %s", detectorID, enrichReq.Config)
 				}
 				actualMode = r.enrichmentOptions.ExecHashMode.String()
 				if requestedMode != r.enrichmentOptions.ExecHashMode {

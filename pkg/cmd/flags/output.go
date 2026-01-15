@@ -16,13 +16,9 @@ const (
 	OutputFlag = "output"
 
 	// output option flags
-	noneFlag              = "none"
-	optionFlag            = "option"
-	stackAddressesFlag    = "stack-addresses"
-	execEnvFlag           = "exec-env"
-	parseArgumentsFlag    = "parse-arguments"
-	parseArgumentsFDsFlag = "parse-arguments-fds"
-	sortEventsFlag        = "sort-events"
+	noneFlag       = "none"
+	optionFlag     = "option"
+	sortEventsFlag = "sort-events"
 
 	// output format flags
 	tableFlag        = "table"
@@ -82,9 +78,9 @@ type DestinationsConfig struct {
 type OutputOptsConfig struct {
 	None              bool   `mapstructure:"none"`
 	StackAddresses    bool   `mapstructure:"stack-addresses"`
-	ExecEnv           bool   `mapstructure:"exec-env"`
-	ExecHash          string `mapstructure:"exec-hash"`
-	ParseArguments    bool   `mapstructure:"parse-arguments"`
+	ExecEnv           bool   `mapstructure:"environment"`
+	ExecHash          string `mapstructure:"executable-hash"`
+	ParseArguments    bool   `mapstructure:"decoded-data"`
 	ParseArgumentsFDs bool   `mapstructure:"parse-arguments-fds"`
 	SortEvents        bool   `mapstructure:"sort-events"`
 }

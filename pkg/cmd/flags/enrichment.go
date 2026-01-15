@@ -20,11 +20,14 @@ const (
 	containerContainerdSocketFlag = "container.containerd.socket"
 	containerCrioSocketFlag       = "container.crio.socket"
 	containerPodmanSocketFlag     = "container.podman.socket"
-	resolveFdFlag                 = "resolve-fd"
-	execHashFlag                  = "exec-hash"
-	execHashModeFlag              = "exec-hash.mode"
-	userStackTraceFlag            = "user-stack-trace"
-	// execEnvFlag and parseArgumentsFlag are defined in output.go since they're shared between output and enrichment
+	fdPathsFlag                   = "fd-paths"
+	executableHashFlag            = "executable-hash"
+	executableHashModeFlag        = "executable-hash.mode"
+	userStackFlag                 = "user-stack"
+	environmentFlag               = "environment"
+	decodedDataFlag               = "decoded-data"
+
+	// environmentFlag and decodedDataFlag are shared between output and enrichment
 
 	enrichInvalidFlagFormat = "invalid enrichment flag: %s, use 'tracee man enrichment' for more info"
 )
@@ -32,11 +35,11 @@ const (
 // EnrichmentConfig is the configuration for enrichment
 type EnrichmentConfig struct {
 	Container      ContainerEnrichmentConfig `mapstructure:"container"`
-	ResolveFd      bool                      `mapstructure:"resolve-fd"`
-	ExecEnv        bool                      `mapstructure:"exec-env"`
-	ExecHash       ExecHashConfig            `mapstructure:"exec-hash"`
-	UserStackTrace bool                      `mapstructure:"user-stack-trace"`
-	ParseArguments bool                      `mapstructure:"parse-arguments"`
+	ResolveFd      bool                      `mapstructure:"fd-paths"`
+	ExecEnv        bool                      `mapstructure:"environment"`
+	ExecHash       ExecHashConfig            `mapstructure:"executable-hash"`
+	UserStackTrace bool                      `mapstructure:"user-stack"`
+	ParseArguments bool                      `mapstructure:"decoded-data"`
 }
 
 // ContainerEnrichmentConfig is the container enrichment configuration
@@ -170,23 +173,23 @@ func (e *EnrichmentConfig) flags() []string {
 		flags = append(flags, fmt.Sprintf("%s=%s", containerPodmanSocketFlag, e.Container.PodmanSocket))
 	}
 	if e.ResolveFd {
-		flags = append(flags, resolveFdFlag)
+		flags = append(flags, fdPathsFlag)
 	}
 	if e.ExecEnv {
-		flags = append(flags, execEnvFlag)
+		flags = append(flags, environmentFlag)
 	}
-	// ExecHash: if Enabled is true OR Mode is set, add exec-hash flag
+	// ExecHash: if Enabled is true OR Mode is set, add executable-hash flag
 	if e.ExecHash.Enabled || e.ExecHash.Mode != "" {
-		flags = append(flags, execHashFlag)
+		flags = append(flags, executableHashFlag)
 	}
 	if e.ExecHash.Mode != "" {
-		flags = append(flags, fmt.Sprintf("%s=%s", execHashModeFlag, e.ExecHash.Mode))
+		flags = append(flags, fmt.Sprintf("%s=%s", executableHashModeFlag, e.ExecHash.Mode))
 	}
 	if e.UserStackTrace {
-		flags = append(flags, userStackTraceFlag)
+		flags = append(flags, userStackFlag)
 	}
 	if e.ParseArguments {
-		flags = append(flags, parseArgumentsFlag)
+		flags = append(flags, decodedDataFlag)
 	}
 
 	return flags
@@ -229,18 +232,18 @@ func PrepareEnrichment(enrichment []string) (EnrichmentConfig, error) {
 		case containerPodmanSocketFlag:
 			enrichmentConfig.Container.PodmanSocket = parts[1]
 			enrichmentConfig.Container.Enabled = true // Setting podman.socket enables container
-		case resolveFdFlag:
+		case fdPathsFlag:
 			enrichmentConfig.ResolveFd = true
-		case execEnvFlag:
+		case environmentFlag:
 			enrichmentConfig.ExecEnv = true
-		case execHashFlag:
+		case executableHashFlag:
 			enrichmentConfig.ExecHash.Enabled = true
-		case execHashModeFlag:
+		case executableHashModeFlag:
 			enrichmentConfig.ExecHash.Mode = parts[1]
-			enrichmentConfig.ExecHash.Enabled = true // Setting exec-hash.mode enables exec-hash
-		case userStackTraceFlag:
+			enrichmentConfig.ExecHash.Enabled = true // Setting executable-hash.mode enables executable-hash
+		case userStackFlag:
 			enrichmentConfig.UserStackTrace = true
-		case parseArgumentsFlag:
+		case decodedDataFlag:
 			enrichmentConfig.ParseArguments = true
 		default:
 			return EnrichmentConfig{}, errfmt.Errorf(enrichInvalidFlagFormat, flagName)
@@ -259,11 +262,11 @@ func PrepareEnrichment(enrichment []string) (EnrichmentConfig, error) {
 func isEnrichmentBoolFlag(flag string) bool {
 	return flag == containerFlag ||
 		flag == containerCgroupfsForceFlag ||
-		flag == resolveFdFlag ||
-		flag == execEnvFlag ||
-		flag == execHashFlag ||
-		flag == userStackTraceFlag ||
-		flag == parseArgumentsFlag
+		flag == fdPathsFlag ||
+		flag == environmentFlag ||
+		flag == executableHashFlag ||
+		flag == userStackFlag ||
+		flag == decodedDataFlag
 }
 
 // invalidEnrichmentFlagError formats the error message for an invalid enrichment flag.

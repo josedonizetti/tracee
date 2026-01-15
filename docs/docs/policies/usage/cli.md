@@ -108,15 +108,19 @@ logging:
       pkg:
         - capabilities
 
+# enrichment
+
+enrichment:
+  environment: true
+  executable-hash:
+    enabled: true
+    mode: dev-inode
+  decoded-data: true
+
 # output
 
 output:
   options:
-    stack-addresses: false
-    exec-env: true
-    exec-hash: dev-inode
-    parse-arguments: true
-    parse-arguments-fds: true
     sort-events: true
   destinations:
     - name: stdout

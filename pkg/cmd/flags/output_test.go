@@ -302,41 +302,6 @@ func TestPrepareOutput(t *testing.T) {
 			expectedError: InvalidOutputOptionError("stack-addresses"),
 		},
 		{
-			testName:      "option exec-env (moved to enrichment)",
-			outputSlice:   []string{"option:exec-env"},
-			expectedError: InvalidOutputOptionError("exec-env"),
-		},
-		{
-			testName:      "option exec-hash (moved to enrichment)",
-			outputSlice:   []string{"option:exec-hash"},
-			expectedError: InvalidOutputOptionError("exec-hash"),
-		},
-		{
-			testName:      "option exec-hash=inode (moved to enrichment)",
-			outputSlice:   []string{"option:exec-hash=inode"},
-			expectedError: InvalidOutputOptionError("exec-hash=inode"),
-		},
-		{
-			testName:      "option exec-hash invalid",
-			outputSlice:   []string{"option:exec-hash=notvalid"},
-			expectedError: InvalidOutputOptionError("exec-hash=notvalid"),
-		},
-		{
-			testName:      "option exec-hash invalid",
-			outputSlice:   []string{"option:exec-hasha"},
-			expectedError: InvalidOutputOptionError("exec-hasha"),
-		},
-		{
-			testName:      "option parse-arguments (moved to enrichment)",
-			outputSlice:   []string{"json", "option:parse-arguments"},
-			expectedError: InvalidOutputOptionError("parse-arguments"),
-		},
-		{
-			testName:      "option parse-arguments-fds (moved to enrichment)",
-			outputSlice:   []string{"json", "option:parse-arguments-fds"},
-			expectedError: InvalidOutputOptionError("parse-arguments-fds"),
-		},
-		{
 			testName:    "option sort-events",
 			outputSlice: []string{"option:sort-events"},
 			expectedOutput: config.OutputConfig{
